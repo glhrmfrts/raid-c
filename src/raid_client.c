@@ -44,6 +44,7 @@ static void reply_request(raid_client_t* cl)
     if (req->next) {
         req->next->prev = req->prev;
     }
+    free(req->etag);
     free(req);
 }
 
@@ -103,6 +104,7 @@ static void process_data(raid_client_t* cl, const char* buf, size_t buf_len)
 raid_error_t raid_connect(raid_client_t* cl, const char* host, const char* port)
 {
     cl->reqs = NULL;
+    cl->state = RAID_STATE_WAIT_MESSAGE;
     return raid_socket_connect(&cl->socket, host, port);
 }
 
@@ -149,6 +151,7 @@ raid_error_t raid_recv_loop(raid_client_t* cl)
 
                     raid_request_t* swap = req;
                     req = req->next;
+                    free(swap->etag);
                     free(swap);
                 }
                 cl->reqs = NULL;
