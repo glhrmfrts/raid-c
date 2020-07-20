@@ -2,6 +2,15 @@
 #include "raid_client.h"
 
 
+void raid_read_init(raid_client_t* cl, msgpack_object* header, msgpack_object* body)
+{
+    cl->in_reader.header = header;
+    cl->in_reader.body = body;
+    cl->in_reader.nested = body;
+    cl->in_reader.parent = NULL;
+    cl->in_reader.nested_top = 0;
+}
+
 bool raid_is_code(raid_client_t* cl, const char* code)
 {
     for (int i = 0; i < cl->in_reader.header->via.map.size; i++) {

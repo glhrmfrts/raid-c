@@ -19,6 +19,8 @@ typedef struct raid_reader {
 } raid_reader_t;
 
 
+void raid_read_init(raid_client_t* cl, msgpack_object* header, msgpack_object* body);
+
 bool raid_is_code(raid_client_t* cl, const char* code);
 
 bool raid_read_code(raid_client_t* cl, char** res);

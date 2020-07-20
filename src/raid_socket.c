@@ -205,6 +205,11 @@ raid_error_t raid_socket_connect(raid_socket_t* s, const char* host, const char*
     return socket_impl_connect(s);
 }
 
+bool raid_socket_connected(raid_socket_t* s)
+{
+    return s->handle != -1;
+}
+
 raid_error_t raid_socket_send(raid_socket_t* s, const char* data, size_t data_len)
 {
     return socket_impl_send(s, data, data_len);

@@ -3,6 +3,11 @@
 #include <ctype.h>
 #include "raid_client.h"
 
+static const char* find_etag(msgpack_object* obj)
+{
+    
+}
+
 static raid_request_t* find_request(raid_client_t* cl, const char* etag)
 {
     raid_request_t* req = cl->reqs;
@@ -15,18 +20,19 @@ static raid_request_t* find_request(raid_client_t* cl, const char* etag)
     return NULL;
 }
 
-static void reply_request(raid_client_t* cl, const char* etag)
+static void reply_request(raid_client_t* cl)
 {
+    msgpack_object* body = find_obj(&cl->in_reader.obj, "body");
+    msgpack_object* header = find_obj(&cl->in_reader.obj, "header");
+    msgpack_object* etag = find_obj(header, "etag");
+    if (!etag) return;
+
     // Find the request to reply to.
-    raid_request_t* req = find_request(cl, etag);
+    raid_request_t* req = find_request(cl, etag->via.str.ptr);
     if (!req) return;
 
     // Initialize reader state.
-    cl->in_reader.header = find_header(cl);
-    cl->in_reader.body = find_body(cl);
-    cl->in_reader.nested = cl->in_reader.body;
-    cl->in_reader.parent = NULL;
-    cl->in_reader.nested_top = 0;
+    raid_read_init(cl, header, body);
 
     // Fire the request callback.
     req->callback(cl, RAID_SUCCESS, req->callback_user_data);
@@ -45,14 +51,10 @@ static void parse_response(raid_client_t* cl)
 {
     msgpack_zone_init(&cl->in_reader.mempool, 2048);
 
-    msgpack_object obj;
-    msgpack_unpack(cl->msg_buf, cl->msg_len, NULL, &cl->in_reader.mempool, &obj);
+    msgpack_unpack(cl->msg_buf, cl->msg_len, NULL, &cl->in_reader.mempool, &cl->in_reader.obj);
 
-    if (obj.type == MSGPACK_OBJECT_MAP) {
-        const char* etag = find_etag(obj);
-        if (etag) {
-            reply_request(cl, etag);
-        }
+    if (cl->in_reader.obj.type == MSGPACK_OBJECT_MAP) {
+        reply_request(cl);
     }
 
     msgpack_zone_destroy(&cl->in_reader.mempool);
@@ -140,7 +142,17 @@ raid_error_t raid_recv_loop(raid_client_t* cl)
 
         raid_error_t err = raid_socket_recv(&cl->socket, buf, sizeof(buf), &buf_len);
         if (err) {            
-            //cl->callbacks.recv_error(cl, err, cl->callbacks.user_data);
+            if (err == RAID_NOT_CONNECTED || err == RAID_RECV_TIMEOUT) {
+                raid_request_t* req = cl->reqs;
+                while (req) {
+                    req->callback(cl, err, req->callback_user_data);
+
+                    raid_request_t* swap = req;
+                    req = req->next;
+                    free(swap);
+                }
+                cl->reqs = NULL;
+            }
         }
         else {
             process_data(cl, buf, buf_len);
