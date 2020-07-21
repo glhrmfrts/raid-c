@@ -125,7 +125,7 @@ static void sync_request_callback(raid_client_t* cl, raid_reader_t* r, raid_erro
 {
     request_sync_data_t* data = (request_sync_data_t*)user_data;
     if (err == RAID_SUCCESS) {
-        raid_reader_move(r, data->response_reader);
+        raid_reader_swap(r, data->response_reader);
     }
     else {
         data->err = err;
