@@ -61,15 +61,15 @@ static void reply_request(raid_client_t* cl)
 
     // Remove from list.
     pthread_mutex_lock(&cl->reqs_mutex);
-    
+
+    if (req == cl->reqs) {
+        cl->reqs = req->next;
+    }
     if (req->prev) {
         req->prev->next = req->next;
     }
     if (req->next) {
         req->next->prev = req->prev;
-    }
-    if (req == cl->reqs) {
-        cl->reqs = NULL;
     }
     free(req->etag);
     free(req);
