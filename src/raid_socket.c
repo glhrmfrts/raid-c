@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "raid_socket.h"
+#include "raid.h"
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <errno.h>
 #endif
 
 #ifdef _WIN32
@@ -113,9 +114,6 @@ static raid_error_t socket_impl_connect(raid_socket_t* s)
     int ret = 0;
     int conn_fd;
 
-    static WSADATA wsaData;
-    WSAStartup(MAKEWORD(2, 2), &wsaData);
-
     // Translate the human-readable address to a network binary address.
     struct addrinfo* addr_info = NULL;
     struct addrinfo hints = {};
@@ -125,31 +123,32 @@ static raid_error_t socket_impl_connect(raid_socket_t* s)
 
     ret = getaddrinfo(s->host, s->port, &hints, &addr_info);
     if (ret != 0) {
-        fprintf(stderr, "getaddrinfo failed with error: %d", ret);
+        fprintf(stderr, "getaddrinfo failed with error: %d\n", ret);
         return RAID_INVALID_ADDRESS;
     }
 
     // Create the socket.
     s->handle = socket(AF_INET, SOCK_STREAM, 0);
-    if (s->handle == -1) {
-        fprintf(stderr, "error creating socket");
+    if ((int)s->handle == -1) {
+        fprintf(stderr, "error creating socket\n");
         return RAID_SOCKET_ERROR;
     }
 
     // Connect to the first address we found.
     struct sockaddr* server_addr = addr_info->ai_addr;
-    ret = connect(s->handle, server_addr, sizeof(struct sockaddr));
+    ret = connect((int)s->handle, server_addr, sizeof(struct sockaddr));
     if (ret == -1) {
-        fprintf(stderr, "error connecting to: %s", s->host);
+        fprintf(stderr, "error connecting to: %s\n", s->host);
         freeaddrinfo(addr_info);
         return RAID_CONNECT_ERROR;
     }
 
     // Set the socket recv timeout
-    const int kSocketTimeoutSeconds = 10*1000;
-    struct timeval tv;
+    const int kSocketTimeoutSeconds = 10;
+    struct timeval tv = {};
     tv.tv_sec = kSocketTimeoutSeconds;
-    setsockopt(s->handle, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    tv.tv_usec = 0;
+    setsockopt((int)s->handle, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
 
     freeaddrinfo(addr_info);
     return RAID_SUCCESS;
@@ -157,22 +156,22 @@ static raid_error_t socket_impl_connect(raid_socket_t* s)
 
 static raid_error_t socket_impl_send(raid_socket_t* s, const char* data, size_t data_len)
 {
-    int nwrite = send(s->handle, data, data_len, 0);
-    return RAID_SUCCESS;
+    //printf("%d %d %d %d\n", data[0], data[1], data[2], data[3]);
+    //printf("%s\n", data);
+    //printf("%d\n", data_len);
+    int nwrite = send((int)s->handle, data, data_len, 0);
+    return (nwrite == data_len) ? RAID_SUCCESS : RAID_UNKNOWN;
 }
 
 static raid_error_t socket_impl_recv(raid_socket_t* s, char* buf, size_t buf_len, int* out_len)
 {
-    *out_len = recv(s->handle, buf, buf_len, 0);
-    int err = WSAGetLastError();
-    if (errno == EWOULDBLOCK || errno == EAGAIN || err == WSAETIMEDOUT) {
+    *out_len = recv((int)s->handle, buf, buf_len, 0);
+    //printf("%d\n", *out_len);
+    if (errno == EWOULDBLOCK || errno == EAGAIN) {
         return RAID_RECV_TIMEOUT;
     }
-    if (err == WSAECONNRESET || err == WSAEINTR) {
-        return RAID_NOT_CONNECTED;
-    }
     if (*out_len < 0) {
-        wprintf(L"recv failed with error: %d\n", err);
+        fprintf(stderr, "recv failed with error: %d\n", errno);
         return RAID_UNKNOWN;
     }
     return RAID_SUCCESS;
@@ -182,12 +181,12 @@ static raid_error_t socket_impl_disconnect(raid_socket_t* s)
 {
     int ret;
 
-    ret = shutdown(s->handle, SD_BOTH);
+    ret = shutdown((int)s->handle, SHUT_RDWR);
     if (ret == -1) {
         return RAID_SHUTDOWN_ERROR;
     }
 
-    ret = closesocket(s->handle);
+    ret = close(s->handle);
     if (ret == -1) {
         return RAID_CLOSE_ERROR;
     }
@@ -222,7 +221,7 @@ raid_error_t raid_socket_recv(raid_socket_t* s, char* buf, size_t buf_len, int* 
 
 raid_error_t raid_socket_close(raid_socket_t* s)
 {
-    raid_error_t err = socket_impl_close(s);
+    raid_error_t err = socket_impl_disconnect(s);
     free(s->host);
     free(s->port);
     return err;
