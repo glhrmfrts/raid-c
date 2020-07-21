@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "raid.h"
+#include "raid_internal.h"
 
 #ifdef _WIN32
 #include <winsock2.h>

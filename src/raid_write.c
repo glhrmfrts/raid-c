@@ -3,6 +3,7 @@
 #include <ctype.h>
 #include <time.h>
 #include "raid.h"
+#include "raid_internal.h"
 
 #define RAID_KEY_HEADER "header"
 #define RAID_KEY_ACTION "action"
@@ -26,6 +27,8 @@ static const char* gen_etag()
 
 raid_error_t raid_write_message(raid_client_t* cl, const char* action)
 {
+    cl->out_writer.active = true;
+    
     /* msgpack::sbuffer is a simple buffer implementation. */
     msgpack_sbuffer_init(&cl->out_writer.sbuf);
 

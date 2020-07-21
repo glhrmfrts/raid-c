@@ -1,4 +1,5 @@
 #include "raid.h"
+#include "raid_internal.h"
 
 
 void raid_read_init(raid_client_t* cl, msgpack_object* header, msgpack_object* body)

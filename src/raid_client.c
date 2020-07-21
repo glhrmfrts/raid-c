@@ -1,15 +1,16 @@
 #include <msgpack.h>
 #include <ctype.h>
 #include "raid.h"
+#include "raid_internal.h"
 
 static void debug_etags(raid_client_t* cl)
-    {
-        raid_request_t* req = cl->reqs;
-        while (req) {
-            printf("etag: %s\n", req->etag);
-            req = req->next;
-        }
+{
+    raid_request_t* req = cl->reqs;
+    while (req) {
+        printf("etag: %s\n", req->etag);
+        req = req->next;
     }
+}
 
 static msgpack_object* find_obj(msgpack_object* obj, const char* key)
 {
@@ -189,7 +190,21 @@ raid_error_t raid_request(raid_client_t* cl, raid_callback_t cb, void* user_data
     // Destroy writer buffer
     msgpack_sbuffer_destroy(&cl->out_writer.sbuf);
 
+    cl->out_writer.etag = NULL;
     return result;
+}
+
+const char* raid_request_etag(raid_client_t* cl)
+{
+    return cl->out_writer.etag;
+}
+
+const char* raid_response_etag(raid_client_t* cl)
+{
+    if (cl->in_reader.header) {
+        return cl->in_reader.etag;
+    }
+    return NULL;
 }
 
 raid_error_t raid_close(raid_client_t* cl)
