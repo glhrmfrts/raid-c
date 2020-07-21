@@ -25,14 +25,24 @@ static const char* gen_etag()
     return buf;
 }
 
-raid_error_t raid_write_message(raid_client_t* cl, const char* action)
+void raid_writer_init(raid_writer_t* w)
 {
-    /* msgpack::sbuffer is a simple buffer implementation. */
-    msgpack_sbuffer_init(&cl->out_writer.sbuf);
+    memset(w, 0, sizeof(raid_writer_t));
+    msgpack_sbuffer_init(&w->sbuf);
+}
+
+void raid_writer_destroy(raid_writer_t* w)
+{
+    msgpack_sbuffer_destroy(&w->sbuf);
+}
+
+raid_error_t raid_write_message(raid_writer_t* w, const char* action)
+{
+    msgpack_sbuffer_clear(&w->sbuf);
 
     /* serialize values into the buffer using msgpack_sbuffer_write callback function. */
-    msgpack_packer* pk = &cl->out_writer.pk;
-    msgpack_packer_init(pk, &cl->out_writer.sbuf, msgpack_sbuffer_write);
+    msgpack_packer* pk = &w->pk;
+    msgpack_packer_init(pk, &w->sbuf, msgpack_sbuffer_write);
     msgpack_pack_map(pk, 2);
 
     msgpack_pack_str_with_body(pk, RAID_KEY_HEADER, sizeof(RAID_KEY_HEADER) - 1);
@@ -44,74 +54,74 @@ raid_error_t raid_write_message(raid_client_t* cl, const char* action)
         msgpack_pack_str_with_body(pk, action, strlen(action));
         msgpack_pack_str_with_body(pk, RAID_KEY_ETAG, sizeof(RAID_KEY_ETAG) - 1);
         msgpack_pack_str_with_body(pk, etag, strlen(etag));
-        cl->out_writer.etag = etag;
+        w->etag = etag;
     }
     msgpack_pack_str_with_body(pk, RAID_KEY_BODY, sizeof(RAID_KEY_BODY) - 1);
     return RAID_SUCCESS;
 }
 
-raid_error_t raid_write_int(raid_client_t* cl, int n)
+raid_error_t raid_write_int(raid_writer_t* w, int n)
 {
-    msgpack_packer* pk = &cl->out_writer.pk;
+    msgpack_packer* pk = &w->pk;
     msgpack_pack_int32(pk, n);
     return RAID_SUCCESS;
 }
 
-raid_error_t raid_write_float(raid_client_t* cl, float n)
+raid_error_t raid_write_float(raid_writer_t* w, float n)
 {
-    msgpack_packer* pk = &cl->out_writer.pk;
+    msgpack_packer* pk = &w->pk;
     msgpack_pack_float(pk, n);
     return RAID_SUCCESS;
 }
 
-raid_error_t raid_write_string(raid_client_t* cl, const char* str, size_t len)
+raid_error_t raid_write_string(raid_writer_t* w, const char* str, size_t len)
 {
-    msgpack_packer* pk = &cl->out_writer.pk;
+    msgpack_packer* pk = &w->pk;
     msgpack_pack_str_with_body(pk, str, len);
     return RAID_SUCCESS;
 }
 
-raid_error_t raid_write_array(raid_client_t* cl, size_t len)
+raid_error_t raid_write_array(raid_writer_t* w, size_t len)
 {
-    msgpack_packer* pk = &cl->out_writer.pk;
+    msgpack_packer* pk = &w->pk;
     msgpack_pack_array(pk, len);
     return RAID_SUCCESS;
 }
 
-raid_error_t raid_write_map(raid_client_t* cl, size_t keys_len)
+raid_error_t raid_write_map(raid_writer_t* w, size_t keys_len)
 {
-    msgpack_packer* pk = &cl->out_writer.pk;
+    msgpack_packer* pk = &w->pk;
     msgpack_pack_map(pk, keys_len);
     return RAID_SUCCESS;
 }
 
-raid_error_t raid_write_key_value_int(raid_client_t* cl, const char* key, size_t key_len, int n)
+raid_error_t raid_write_key_value_int(raid_writer_t* w, const char* key, size_t key_len, int n)
 {
-    msgpack_packer* pk = &cl->out_writer.pk;
+    msgpack_packer* pk = &w->pk;
     msgpack_pack_str_with_body(pk, key, key_len);
     msgpack_pack_int(pk, n);
     return RAID_SUCCESS;
 }
 
-raid_error_t raid_write_key_value_float(raid_client_t* cl, const char* key, size_t key_len, float n)
+raid_error_t raid_write_key_value_float(raid_writer_t* w, const char* key, size_t key_len, float n)
 {
-    msgpack_packer* pk = &cl->out_writer.pk;
+    msgpack_packer* pk = &w->pk;
     msgpack_pack_str_with_body(pk, key, key_len);
     msgpack_pack_float(pk, n);
     return RAID_SUCCESS;
 }
 
-raid_error_t raid_write_key_value_string(raid_client_t* cl, const char* key, size_t key_len, const char* str, size_t len)
+raid_error_t raid_write_key_value_string(raid_writer_t* w, const char* key, size_t key_len, const char* str, size_t len)
 {
-    msgpack_packer* pk = &cl->out_writer.pk;
+    msgpack_packer* pk = &w->pk;
     msgpack_pack_str_with_body(pk, key, key_len);
     msgpack_pack_str_with_body(pk, str, len);
     return RAID_SUCCESS;
 }
 
-raid_error_t raid_write_arrayf(raid_client_t* cl, int n, const char* format, ...)
+raid_error_t raid_write_arrayf(raid_writer_t* w, int n, const char* format, ...)
 {
-    raid_write_array(cl, n);
+    raid_write_array(w, n);
 
     int result = RAID_SUCCESS;
     const char* fc = format;
@@ -135,17 +145,17 @@ raid_error_t raid_write_arrayf(raid_client_t* cl, int n, const char* format, ...
         switch (c) {
         case 'd': {
             int int_arg = va_arg(args, int);
-            raid_write_int(cl, int_arg);
+            raid_write_int(w, int_arg);
             break;
         }
         case 'f': {
             double float_arg = va_arg(args, double);
-            raid_write_float(cl, float_arg);
+            raid_write_float(w, float_arg);
             break;
         }
         case 's': {
             const char* str_arg = va_arg(args, char*);
-            raid_write_string(cl, str_arg, strlen(str_arg));
+            raid_write_string(w, str_arg, strlen(str_arg));
             break;
         }
         }
@@ -155,9 +165,9 @@ raid_error_t raid_write_arrayf(raid_client_t* cl, int n, const char* format, ...
     return result;
 }
 
-raid_error_t raid_write_mapf(raid_client_t* cl, int n, const char* format, ...)
+raid_error_t raid_write_mapf(raid_writer_t* w, int n, const char* format, ...)
 {
-    raid_write_map(cl, n);
+    raid_write_map(w, n);
 
     int result = RAID_SUCCESS;
     const char* fc = format;
@@ -211,17 +221,17 @@ raid_error_t raid_write_mapf(raid_client_t* cl, int n, const char* format, ...)
         switch (c) {
         case 'd': {
             int int_arg = va_arg(args, int);
-            raid_write_key_value_int(cl, key, key_len, int_arg);
+            raid_write_key_value_int(w, key, key_len, int_arg);
             break;
         }
         case 'f': {
             double float_arg = va_arg(args, double);
-            raid_write_key_value_float(cl, key, key_len, float_arg);
+            raid_write_key_value_float(w, key, key_len, float_arg);
             break;
         }
         case 's': {
             const char* str_arg = va_arg(args, char*);
-            raid_write_key_value_string(cl, key, key_len, str_arg, strlen(str_arg));
+            raid_write_key_value_string(w, key, key_len, str_arg, strlen(str_arg));
             break;
         }
         }

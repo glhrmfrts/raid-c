@@ -3,7 +3,10 @@
 
 #include "raid.h"
 
-void raid_read_init(raid_client_t* cl, msgpack_object* header, msgpack_object* body);
+
+void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len);
+
+void raid_reader_move(raid_reader_t* from, raid_reader_t* to);
 
 
 raid_error_t raid_write_key_value_int(raid_client_t* cl, const char* key, size_t key_len, int n);

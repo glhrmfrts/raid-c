@@ -3,6 +3,13 @@
 #include "raid.h"
 #include "raid_internal.h"
 
+typedef struct {
+    pthread_cond_t cond_var;
+    pthread_mutex_t mutex;
+    bool done;
+    raid_reader_t* response_reader;
+} request_sync_data_t;
+
 static void* raid_recv_loop(void* arg);
 
 static void debug_etags(raid_client_t* cl)
@@ -12,16 +19,6 @@ static void debug_etags(raid_client_t* cl)
         printf("etag: %s\n", req->etag);
         req = req->next;
     }
-}
-
-static msgpack_object* find_obj(msgpack_object* obj, const char* key)
-{
-    for (size_t i = 0; i < obj->via.map.size; i++) {
-        if (!strncmp(key, obj->via.map.ptr[i].key.via.str.ptr, strlen(key))) {
-            return &obj->via.map.ptr[i].val;
-        }
-    }
-    return NULL;
 }
 
 static raid_request_t* find_request(raid_client_t* cl, const char* etag)
@@ -36,28 +33,14 @@ static raid_request_t* find_request(raid_client_t* cl, const char* etag)
     return NULL;
 }
 
-static void reply_request(raid_client_t* cl)
+static void reply_request(raid_client_t* cl, raid_reader_t* r)
 {
-    msgpack_object* body = find_obj(&cl->in_reader.obj, "body");
-    msgpack_object* header = find_obj(&cl->in_reader.obj, "header");
-    if (!header) return;
-
-    msgpack_object* etag = find_obj(header, "etag");
-    if (!etag) return;
-
     // Find the request to reply to.
-    raid_request_t* req = find_request(cl, etag->via.str.ptr);
+    raid_request_t* req = find_request(cl, r->etag_obj->via.str.ptr);
     if (!req) return;
 
-    // Initialize reader state.
-    raid_read_init(cl, header, body);
-
     // Fire the request callback.
-    req->callback(cl, RAID_SUCCESS, req->callback_user_data);
-
-    // Signal that we stopped reading
-    cl->in_reader.header = NULL;
-    cl->in_reader.body = NULL;
+    req->callback(cl, r, RAID_SUCCESS, req->callback_user_data);
 
     // Remove from list.
     pthread_mutex_lock(&cl->reqs_mutex);
@@ -79,15 +62,15 @@ static void reply_request(raid_client_t* cl)
 
 static void parse_response(raid_client_t* cl)
 {
-    msgpack_zone_init(&cl->in_reader.mempool, 2048);
+    raid_reader_t r;
+    raid_reader_init(&r);
+    raid_reader_set_data(&r, cl->msg_buf, cl->msg_len);
 
-    msgpack_unpack(cl->msg_buf, cl->msg_len, NULL, &cl->in_reader.mempool, &cl->in_reader.obj);
-
-    if (cl->in_reader.obj.type == MSGPACK_OBJECT_MAP) {
-        reply_request(cl);
+    if (r.obj->type == MSGPACK_OBJECT_MAP) {
+        reply_request(cl, &r);
     }
 
-    msgpack_zone_destroy(&cl->in_reader.mempool);
+    raid_reader_destroy(&r);
 }
 
 static int read_message(raid_client_t* cl)
@@ -111,6 +94,8 @@ static int read_message(raid_client_t* cl)
 
         if (cl->msg_len >= cl->msg_total_size) {
             parse_response(cl);
+            free(cl->msg_buf);
+            cl->msg_buf = NULL;
             cl->state = RAID_STATE_WAIT_MESSAGE;
         }
         return cl->in_end - cl->in_ptr;
@@ -135,6 +120,17 @@ static void process_data(raid_client_t* cl, const char* buf, size_t buf_len)
     }
 }
 
+static void sync_request_callback(raid_client_t* cl, raid_reader_t* r, raid_error_t err, void* user_data)
+{
+    request_sync_data_t* data = (request_sync_data_t*)user_data;
+    raid_reader_move(r, data->response_reader);
+
+    pthread_mutex_lock(&data->mutex);
+    data->done = true;
+    pthread_cond_signal(&data->cond_var);
+    pthread_mutex_unlock(&data->mutex);
+}
+
 raid_error_t raid_connect(raid_client_t* cl, const char* host, const char* port)
 {
     cl->reqs = NULL;
@@ -154,14 +150,14 @@ raid_error_t raid_connect(raid_client_t* cl, const char* host, const char* port)
     return err;
 }
 
-raid_error_t raid_request(raid_client_t* cl, raid_callback_t cb, void* user_data)
+raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_callback_t cb, void* user_data)
 {
     pthread_mutex_lock(&cl->reqs_mutex);
 
     // Append a request to the list
     raid_request_t* req = malloc(sizeof(raid_request_t));
     memset(req, 0, sizeof(raid_request_t));
-    req->etag = strdup(cl->out_writer.etag);
+    req->etag = strdup(w->etag);
     req->callback = cb;
     req->callback_user_data = user_data;
     if (cl->reqs) {
@@ -176,7 +172,7 @@ raid_error_t raid_request(raid_client_t* cl, raid_callback_t cb, void* user_data
     //printf("%s\n", cl->out_writer.sbuf.data);
 
     // Send data to socket
-    int32_t size = cl->out_writer.sbuf.size;
+    int32_t size = w->sbuf.size;
     static char data_size[4];
     data_size[0] = (size >> 24) & 0xFF;
     data_size[1] = (size >> 16) & 0xFF;
@@ -185,27 +181,44 @@ raid_error_t raid_request(raid_client_t* cl, raid_callback_t cb, void* user_data
 
     raid_error_t result = raid_socket_send(&cl->socket, data_size, sizeof(data_size));
     if (!result) {
-        result = raid_socket_send(&cl->socket, cl->out_writer.sbuf.data, size);
+        result = raid_socket_send(&cl->socket, w->sbuf.data, size);
     }
 
-    // Destroy writer buffer
-    msgpack_sbuffer_destroy(&cl->out_writer.sbuf);
-
-    cl->out_writer.etag = NULL;
     return result;
 }
 
-const char* raid_request_etag(raid_client_t* cl)
+raid_error_t raid_request_sync(raid_client_t* cl, const raid_writer_t* w, raid_reader_t* out)
 {
-    return cl->out_writer.etag;
-}
+    request_sync_data_t* data = malloc(sizeof(request_sync_data_t));
+    memset(data, 0, sizeof(request_sync_data_t));
+    data->response_reader = out;
 
-const char* raid_response_etag(raid_client_t* cl)
-{
-    if (cl->in_reader.header) {
-        return cl->in_reader.etag;
+    int err = pthread_mutex_init(&data->mutex, NULL);
+    if (err != 0) {
+        return RAID_UNKNOWN;
     }
-    return NULL;
+
+    err = pthread_cond_init(&data->cond_var, NULL);
+    if (err != 0) {
+        return RAID_UNKNOWN;
+    }
+
+    raid_error_t res = raid_request(cl, w, sync_request_callback, (void*)data);
+    if (res != RAID_SUCCESS) {
+        return res;
+    }
+
+    pthread_mutex_lock(&data->mutex);
+    while (!data->done) {
+        pthread_cond_wait(&data->cond_var, &data->mutex);
+    }
+    pthread_mutex_unlock(&data->mutex);
+
+    pthread_mutex_destroy(&data->mutex);
+    pthread_cond_destroy(&data->cond_var);
+    free(data);
+
+    return RAID_SUCCESS;
 }
 
 raid_error_t raid_close(raid_client_t* cl)
@@ -233,7 +246,7 @@ static void* raid_recv_loop(void* arg)
             if (err == RAID_NOT_CONNECTED || err == RAID_RECV_TIMEOUT) {
                 raid_request_t* req = cl->reqs;
                 while (req) {
-                    req->callback(cl, err, req->callback_user_data);
+                    req->callback(cl, NULL, err, req->callback_user_data);
 
                     raid_request_t* swap = req;
                     req = req->next;

@@ -2,6 +2,23 @@
  *
  *  @brief Raid client functions.
  *
+ *  Example usage:
+ * 
+ *  raid_client_t client;
+ * 
+ *  raid_error_t err = raid_connect(&client, "host", "port");
+ * 
+ *  raid_writer_t w;
+ *  raid_write_message(&w, "api.action");
+ *  raid_write_mapf(&w, 2, "'somenumber' %d 'somestr' %s", 42, "mystring");
+ *  raid_request(&client, &w, response_callback, NULL); // Async request
+ * 
+ *  raid_reader_t r;
+ *  raid_request_sync(&client, &w, &r); // Sync request
+ * 
+ *  raid_write_destroy(&w); // When writer is not needed anymore
+ *  raid_read_destroy(&r); // When reader is not needed anymore
+ *  raid_close(&client); // Close connection
  */
 
 #ifndef RAID_H
@@ -30,8 +47,9 @@ typedef struct raid_socket {
 } raid_socket_t;
 
 typedef struct raid_reader {
-    msgpack_zone mempool;
-    msgpack_object obj;
+    msgpack_zone* mempool; // owns
+    msgpack_object* obj; // owns
+    msgpack_object* etag_obj;
     msgpack_object* header;
     msgpack_object* body;
     msgpack_object* nested;
@@ -39,7 +57,6 @@ typedef struct raid_reader {
     msgpack_object* parents[10];
     int indices[10];
     int nested_top;
-    char* etag;
 } raid_reader_t;
 
 typedef struct raid_writer {
@@ -61,7 +78,7 @@ struct raid_client;
 /**
  * The type of the request callback function.
  */
-typedef void(*raid_callback_t)(struct raid_client*, raid_error_t, void*);
+typedef void(*raid_callback_t)(struct raid_client*, raid_reader_t*, raid_error_t, void*);
 
 /**
  * A Raid request.
@@ -79,8 +96,6 @@ typedef struct raid_request {
  */
 typedef struct raid_client {
     raid_socket_t socket;
-    raid_writer_t out_writer;
-    raid_reader_t in_reader;
     const char* in_ptr;
     const char* in_end;
     char* msg_buf;
@@ -106,27 +121,22 @@ raid_error_t raid_connect(raid_client_t* cl, const char* host, const char* port)
  * @brief Send a request to the raid server.
  * 
  * @param cl Raid client instance.
+ * @param w Request writer.
  * @param cb Response callback.
  * @param user_data Callback user data.
  * @return Any errors that might occur.
  */
-raid_error_t raid_request(raid_client_t* cl, raid_callback_t cb, void* user_data);
+raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_callback_t cb, void* user_data);
 
 /**
- * @brief Get the current request etag.
+ * @brief Send a request to the raid server and block until response is received.
  * 
  * @param cl Raid client instance.
- * @return The current request etag or NULL if not currently writing a request.
+ * @param w Request writer.
+ * @param r Reader to receive response.
+ * @return Any errors that might occur.
  */
-const char* raid_request_etag(raid_client_t* cl);
-
-/**
- * @brief Get the current response etag.
- * 
- * @param cl Raid client instance.
- * @return The current response etag or NULL if not currently reading a response.
- */
-const char* raid_response_etag(raid_client_t* cl);
+raid_error_t raid_request_sync(raid_client_t* cl, const raid_writer_t* w, raid_reader_t* r);
 
 /**
  * @brief Close the connection, making subsequent calls invalid.
@@ -137,180 +147,208 @@ const char* raid_response_etag(raid_client_t* cl);
 raid_error_t raid_close(raid_client_t* cl);
 
 /**
+ * @brief Initialize the reader state.
+ * 
+ * @param r Reader instance.
+ */
+void raid_reader_init(raid_reader_t* r);
+
+/**
+ * @brief Destroy the reader state.
+ * 
+ * @param r Reader instance.
+ */
+void raid_reader_destroy(raid_reader_t* r);
+
+/**
  * @brief Returns true if the response message code is equal to this one.
  * 
- * @param cl Raid client instance.
+ * @param r Raid client instance.
  * @param code String with the code to compare.
  * @return Whether response message code is equal or not.
  */
-bool raid_is_code(raid_client_t* cl, const char* code);
+bool raid_is_code(raid_reader_t* r, const char* code);
 
 /**
  * @brief Reads the code from the response message.
  * 
- * @param cl Raid client instance.
+ * @param r Raid client instance.
  * @param res Pointer to receive the code string.
  * @param len Pointer to receive the length of the string.
  * @return Whether the code could be read or not.
  */
-bool raid_read_code(raid_client_t* cl, char** res, size_t* len);
+bool raid_read_code(raid_reader_t* r, char** res, size_t* len);
 
 /**
  * @brief Reads an integer from the response message body.
  * 
- * @param cl Raid client instance.
+ * @param r Raid client instance.
  * @param res Pointer to receive integer value.
  * @return Whether the value could be read or not.
  */
-bool raid_read_int(raid_client_t* cl, int64_t* res);
+bool raid_read_int(raid_reader_t* r, int64_t* res);
 
 /**
  * @brief Reads a float from the response message body.
  * 
- * @param cl Raid client instance.
+ * @param r Raid client instance.
  * @param res Pointer to receive float value.
  * @return Whether the value could be read or not.
  */
-bool raid_read_float(raid_client_t* cl, double* res);
+bool raid_read_float(raid_reader_t* r, double* res);
 
 /**
  * @brief Reads a string from the response message body.
  * 
- * @param cl Raid client instance.
+ * @param r Raid client instance.
  * @param res Pointer to receive string value.
  * @param len Pointer to receive the length of the string.
  * @return Whether the value could be read or not.
  */
-bool raid_read_string(raid_client_t* cl, char** res, size_t* len);
+bool raid_read_string(raid_reader_t* r, char** res, size_t* len);
 
 /**
  * @brief Reads the current map key.
  * 
- * @param cl Raid client instance.
+ * @param r Raid client instance.
  * @param key Pointer to receive string value.
  * @param len Pointer to receive the length of the string.
  * @return Whether the value could be read or not.
  */
-bool raid_read_map_key(raid_client_t* cl, char** key, size_t* len);
+bool raid_read_map_key(raid_reader_t* r, char** key, size_t* len);
 
 /**
  * @brief Begins reading an array from the response message body.
  *
- * @param cl Raid client instance.
+ * @param r Raid client instance.
  * @param len Pointer to receive the length of the array.
  * @return Whether the value could be read or not.
  */
-bool raid_read_begin_array(raid_client_t* cl, size_t* len);
+bool raid_read_begin_array(raid_reader_t* r, size_t* len);
 
 /**
  * @brief Stops reading an array from the response message body.
  *
- * @param cl Raid client instance.
+ * @param r Raid client instance.
  */
-void raid_read_end_array(raid_client_t* cl);
+void raid_read_end_array(raid_reader_t* r);
 
 /**
  * @brief Begins reading a map from the response message body.
  *
- * @param cl Raid client instance.
+ * @param r Raid client instance.
  * @param len Pointer to receive the length of the map.
  * @return Whether the value could be read or not.
  */
-bool raid_read_begin_map(raid_client_t* cl, size_t* len);
+bool raid_read_begin_map(raid_reader_t* r, size_t* len);
 
 /**
  * @brief Stops reading a map from the response message body.
  *
- * @param cl Raid client instance.
+ * @param r Raid client instance.
  */
-void raid_read_end_map(raid_client_t* cl);
+void raid_read_end_map(raid_reader_t* r);
 
 /**
  * @brief Advance to the next item in the current array or map.
  *
- * @param cl Raid client instance.
+ * @param r Raid client instance.
  * @return Whether the value could be read or not.
  */
-bool raid_read_next(raid_client_t* cl);
+bool raid_read_next(raid_reader_t* r);
+
+/**
+ * @brief Initialize the writer state.
+ * 
+ * @param w Writer instance.
+ */
+void raid_writer_init(raid_writer_t* w);
+
+/**
+ * @brief Destroy the writer state.
+ * 
+ * @param w Writer instance.
+ */
+void raid_writer_destroy(raid_writer_t* w);
 
 /**
  * @brief Begin writing a request message to send to the server.
  * 
- * @param cl Raid client instance.
+ * @param w Raid client instance.
  * @param action Action of the message.
  * @return Any errors that might occur.
  */
-raid_error_t raid_write_message(raid_client_t* cl, const char* action);
+raid_error_t raid_write_message(raid_writer_t* w, const char* action);
 
 /**
  * @brief Write an integer in the request body.
  * 
- * @param cl Raid client instance.
+ * @param w Raid client instance.
  * @param n Integer number.
  * @return Any errors that might occur.
  */
-raid_error_t raid_write_int(raid_client_t* cl, int n);
+raid_error_t raid_write_int(raid_writer_t* w, int n);
 
 /**
  * @brief Write a float in the request body.
  * 
- * @param cl Raid client instance.
+ * @param w Raid client instance.
  * @param n Float number.
  * @return Any errors that might occur.
  */
-raid_error_t raid_write_float(raid_client_t* cl, float n);
+raid_error_t raid_write_float(raid_writer_t* w, float n);
 
 /**
  * @brief Write a string in the request body.
  * 
- * @param cl Raid client instance.
+ * @param w Raid client instance.
  * @param str String data.
  * @param len String size.
  * @return Any errors that might occur.
  */
-raid_error_t raid_write_string(raid_client_t* cl, const char* str, size_t len);
+raid_error_t raid_write_string(raid_writer_t* w, const char* str, size_t len);
 
 /**
  * @brief Write an array in the request body.
  * 
- * @param cl Raid client instance.
+ * @param w Raid client instance.
  * @param len Array size.
  * @return Any errors that might occur.
  */
-raid_error_t raid_write_array(raid_client_t* cl, size_t len);
+raid_error_t raid_write_array(raid_writer_t* w, size_t len);
 
 /**
  * @brief Write a map in the request body.
  * 
- * @param cl Raid client instance.
+ * @param w Raid client instance.
  * @param keys_len Number of keys in the map.
  * @return Any errors that might occur.
  */
-raid_error_t raid_write_map(raid_client_t* cl, size_t keys_len);
+raid_error_t raid_write_map(raid_writer_t* w, size_t keys_len);
 
 /**
  * @brief Variadic function to write an array in the request body according to the given format
  * and arguments passed, e.g.: @c raid_write_arrayf(cl, 2, "%d %s", 10, "string")
  * 
- * @param cl Raid client instance.
+ * @param w Raid client instance.
  * @param n Number of arguments.
  * @param format Format string.
  * @param ... Arguments to put in the array.
  * @return Any errors that might occur.
  */
-raid_error_t raid_write_arrayf(raid_client_t* cl, int n, const char* format, ...);
+raid_error_t raid_write_arrayf(raid_writer_t* w, int n, const char* format, ...);
 
 /**
  * @brief Variadic function to write a map in the request body according to the given format
  * and arguments passed, e.g.: @c raid_write_mapf(cl, 2, "'number' %d 'name' %s", 10, "string")
  * 
- * @param cl Raid client instance.
+ * @param w Raid client instance.
  * @param n Number of arguments.
  * @param format Format string.
  * @param ... Arguments to put in the map.
  * @return Any errors that might occur.
  */
-raid_error_t raid_write_mapf(raid_client_t* cl, int n, const char* format, ...);
+raid_error_t raid_write_mapf(raid_writer_t* w, int n, const char* format, ...);
 
 /**
  * @brief Get human-readable description for errors.

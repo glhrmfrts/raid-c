@@ -17,6 +17,10 @@ const char* raid_error_to_string(raid_error_t err)
         return "recv timeout";
     case RAID_NOT_CONNECTED:
         return "not connected";
+    case RAID_SHUTDOWN_ERROR:
+        return "shutdown error";
+    case RAID_CLOSE_ERROR:
+        return "close error";
     case RAID_UNKNOWN:
         return "unknown";
     default:
