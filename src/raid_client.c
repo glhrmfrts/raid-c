@@ -3,6 +3,8 @@
 #include "raid.h"
 #include "raid_internal.h"
 
+static void* raid_recv_loop(void* arg);
+
 static void debug_etags(raid_client_t* cl)
 {
     raid_request_t* req = cl->reqs;
@@ -118,7 +120,6 @@ static int read_message(raid_client_t* cl)
 
 static void process_data(raid_client_t* cl, const char* buf, size_t buf_len)
 {
-    if (buf_len > 0) printf("%d\n", buf_len);
     cl->in_ptr = buf;
     cl->in_end = buf + buf_len;
     while (cl->in_ptr < cl->in_end) {
@@ -147,8 +148,6 @@ raid_error_t raid_connect(raid_client_t* cl, const char* host, const char* port)
         if (res != 0) {
             fprintf(stderr, "Cannot create mutex: %s\n", strerror(res));
         }
-
-        printf("Connected!\n");
     }
     return err;
 }
@@ -215,7 +214,7 @@ raid_error_t raid_close(raid_client_t* cl)
     return err;
 }
 
-void* raid_recv_loop(void* arg)
+static void* raid_recv_loop(void* arg)
 {
     raid_client_t* cl = (raid_client_t*)arg;
     char buf[4096];

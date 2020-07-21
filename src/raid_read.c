@@ -24,7 +24,7 @@ bool raid_is_code(raid_client_t* cl, const char* code)
 bool raid_read_code(raid_client_t* cl, char** res, size_t* len)
 {
     for (int i = 0; i < cl->in_reader.header->via.map.size; i++) {
-        char* ptr = cl->in_reader.header->via.map.ptr[i].val.via.str.ptr;
+        const char* ptr = cl->in_reader.header->via.map.ptr[i].val.via.str.ptr;
         size_t size = cl->in_reader.header->via.map.ptr[i].val.via.str.size;
         if (!strncmp("code", cl->in_reader.header->via.map.ptr[i].key.via.str.ptr, 4)) {
             *res = malloc(size);
@@ -59,7 +59,7 @@ bool raid_read_string(raid_client_t* cl, char** res, size_t* len)
     if (cl->in_reader.nested->type != MSGPACK_OBJECT_STR && cl->in_reader.nested->type != MSGPACK_OBJECT_BIN)
         return false;
 
-    char* ptr = cl->in_reader.nested->via.str.ptr;
+    const char* ptr = cl->in_reader.nested->via.str.ptr;
     *len = cl->in_reader.nested->via.str.size;
     *res = malloc(*len);
     memcpy(*res, ptr, *len);
@@ -72,8 +72,10 @@ bool raid_read_map_key(raid_client_t* cl, char** key, size_t* len)
         return false;
 
     msgpack_object* obj = &cl->in_reader.parent->via.map.ptr[cl->in_reader.indices[cl->in_reader.nested_top]].key;
-    *key = obj->via.str.ptr;
+    const char* ptr = obj->via.str.ptr;
     *len = obj->via.str.size;
+    *key = malloc(*len);
+    memcpy(*key, ptr, *len);
     return true;
 }
 

@@ -27,8 +27,6 @@ static const char* gen_etag()
 
 raid_error_t raid_write_message(raid_client_t* cl, const char* action)
 {
-    cl->out_writer.active = true;
-    
     /* msgpack::sbuffer is a simple buffer implementation. */
     msgpack_sbuffer_init(&cl->out_writer.sbuf);
 
@@ -141,7 +139,7 @@ raid_error_t raid_write_arrayf(raid_client_t* cl, int n, const char* format, ...
             break;
         }
         case 'f': {
-            float float_arg = va_arg(args, float);
+            double float_arg = va_arg(args, double);
             raid_write_float(cl, float_arg);
             break;
         }
@@ -217,7 +215,7 @@ raid_error_t raid_write_mapf(raid_client_t* cl, int n, const char* format, ...)
             break;
         }
         case 'f': {
-            float float_arg = va_arg(args, float);
+            double float_arg = va_arg(args, double);
             raid_write_key_value_float(cl, key, key_len, float_arg);
             break;
         }

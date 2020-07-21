@@ -1,0 +1,57 @@
+\hypertarget{structraid__client}{}\section{raid\+\_\+client Struct Reference}
+\label{structraid__client}\index{raid\+\_\+client@{raid\+\_\+client}}
+
+
+{\ttfamily \#include $<$raid.\+h$>$}
+
+
+
+Collaboration diagram for raid\+\_\+client\+:
+% FIG 0
+\subsection*{Data Fields}
+\begin{DoxyCompactItemize}
+\item 
+\hyperlink{structraid__socket}{raid\+\_\+socket\+\_\+t} {\bfseries socket}\hypertarget{structraid__client_add578140e41c5fedcd27aa7a22e7fdab}{}\label{structraid__client_add578140e41c5fedcd27aa7a22e7fdab}
+
+\item 
+\hyperlink{structraid__writer}{raid\+\_\+writer\+\_\+t} {\bfseries out\+\_\+writer}\hypertarget{structraid__client_a88a43cfd1ffc34d1066819d8db7ed998}{}\label{structraid__client_a88a43cfd1ffc34d1066819d8db7ed998}
+
+\item 
+\hyperlink{structraid__reader}{raid\+\_\+reader\+\_\+t} {\bfseries in\+\_\+reader}\hypertarget{structraid__client_a98c46826b00cce33e56aff38fa450950}{}\label{structraid__client_a98c46826b00cce33e56aff38fa450950}
+
+\item 
+const char $\ast$ {\bfseries in\+\_\+ptr}\hypertarget{structraid__client_a4bc38eae2bc75852a191e7807339c8e2}{}\label{structraid__client_a4bc38eae2bc75852a191e7807339c8e2}
+
+\item 
+const char $\ast$ {\bfseries in\+\_\+end}\hypertarget{structraid__client_a6616be57c951a7924ff259d8243cb363}{}\label{structraid__client_a6616be57c951a7924ff259d8243cb363}
+
+\item 
+char $\ast$ {\bfseries msg\+\_\+buf}\hypertarget{structraid__client_a4462a275733743757775cb3b658819c0}{}\label{structraid__client_a4462a275733743757775cb3b658819c0}
+
+\item 
+size\+\_\+t {\bfseries msg\+\_\+total\+\_\+size}\hypertarget{structraid__client_a0fe8184e8f6deb317e50a94833618597}{}\label{structraid__client_a0fe8184e8f6deb317e50a94833618597}
+
+\item 
+size\+\_\+t {\bfseries msg\+\_\+len}\hypertarget{structraid__client_a2a567ea6c7b209e06cd79463d134a930}{}\label{structraid__client_a2a567ea6c7b209e06cd79463d134a930}
+
+\item 
+\hyperlink{raid_8h_a8a814d10ff9eabbde9329f6ace017c96}{raid\+\_\+state\+\_\+t} {\bfseries state}\hypertarget{structraid__client_a02ebab2de38a65783bf8e369776c02a2}{}\label{structraid__client_a02ebab2de38a65783bf8e369776c02a2}
+
+\item 
+\hyperlink{raid_8h_a640ed237b27f996b25b1f86b53426783}{raid\+\_\+request\+\_\+t} $\ast$ {\bfseries reqs}\hypertarget{structraid__client_ac297224801dc9a5ad28cb3778fbe253f}{}\label{structraid__client_ac297224801dc9a5ad28cb3778fbe253f}
+
+\item 
+pthread\+\_\+mutex\+\_\+t {\bfseries reqs\+\_\+mutex}\hypertarget{structraid__client_a9deb386c55875370eaeb1727782190d1}{}\label{structraid__client_a9deb386c55875370eaeb1727782190d1}
+
+\item 
+pthread\+\_\+t {\bfseries recv\+\_\+thread}\hypertarget{structraid__client_ad081567e05dc6b429a2fc8d88b138957}{}\label{structraid__client_ad081567e05dc6b429a2fc8d88b138957}
+
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+The client state holding sockets, requests, etc... 
+
+The documentation for this struct was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+src/\hyperlink{raid_8h}{raid.\+h}\end{DoxyCompactItemize}

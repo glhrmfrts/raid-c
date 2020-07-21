@@ -1,3 +1,9 @@
+/** @file raid.h
+ *
+ *  @brief Raid client functions.
+ *
+ */
+
 #ifndef RAID_H
 #define RAID_H
 
@@ -33,7 +39,7 @@ typedef struct raid_reader {
     msgpack_object* parents[10];
     int indices[10];
     int nested_top;
-    const char* etag;
+    char* etag;
 } raid_reader_t;
 
 typedef struct raid_writer {
@@ -61,7 +67,7 @@ typedef void(*raid_callback_t)(struct raid_client*, raid_error_t, void*);
  * A Raid request.
  */
 typedef struct raid_request {
-    const char* etag;
+    char* etag;
     raid_callback_t callback;
     void* callback_user_data;
     struct raid_request* next;
@@ -189,7 +195,7 @@ bool raid_read_map_key(raid_client_t* cl, char** key, size_t* len);
 
 /**
  * @brief Begins reading an array from the response message body.
- * 
+ *
  * @param cl Raid client instance.
  * @param len Pointer to receive the length of the array.
  * @return Whether the value could be read or not.
@@ -198,14 +204,14 @@ bool raid_read_begin_array(raid_client_t* cl, size_t* len);
 
 /**
  * @brief Stops reading an array from the response message body.
- * 
+ *
  * @param cl Raid client instance.
  */
 void raid_read_end_array(raid_client_t* cl);
 
 /**
  * @brief Begins reading a map from the response message body.
- * 
+ *
  * @param cl Raid client instance.
  * @param len Pointer to receive the length of the map.
  * @return Whether the value could be read or not.
@@ -214,14 +220,14 @@ bool raid_read_begin_map(raid_client_t* cl, size_t* len);
 
 /**
  * @brief Stops reading a map from the response message body.
- * 
+ *
  * @param cl Raid client instance.
  */
 void raid_read_end_map(raid_client_t* cl);
 
 /**
  * @brief Advance to the next item in the current array or map.
- * 
+ *
  * @param cl Raid client instance.
  * @return Whether the value could be read or not.
  */
