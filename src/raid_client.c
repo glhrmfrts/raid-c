@@ -55,11 +55,13 @@ static void reply_request(raid_client_t* cl)
     // Fire the request callback.
     req->callback(cl, RAID_SUCCESS, req->callback_user_data);
 
-    pthread_mutex_lock(&cl->reqs_mutex);
-
-    //debug_etags(cl);
+    // Signal that we stopped reading
+    cl->in_reader.header = NULL;
+    cl->in_reader.body = NULL;
 
     // Remove from list.
+    pthread_mutex_lock(&cl->reqs_mutex);
+    
     if (req->prev) {
         req->prev->next = req->next;
     }
