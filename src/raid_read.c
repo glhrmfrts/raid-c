@@ -43,7 +43,7 @@ void raid_reader_move(raid_reader_t* from, raid_reader_t* to)
 void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len)
 {
     msgpack_unpack(data, data_len, NULL, r->mempool, r->obj);
-    r->body = find_obj(r->obj, "body");
+    r->body = r->nested = find_obj(r->obj, "body");
     r->header = find_obj(r->obj, "header");
     if (!r->header) return;
 

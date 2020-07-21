@@ -7,6 +7,7 @@ typedef struct {
     pthread_cond_t cond_var;
     pthread_mutex_t mutex;
     bool done;
+    raid_error_t err;
     raid_reader_t* response_reader;
 } request_sync_data_t;
 
@@ -123,7 +124,12 @@ static void process_data(raid_client_t* cl, const char* buf, size_t buf_len)
 static void sync_request_callback(raid_client_t* cl, raid_reader_t* r, raid_error_t err, void* user_data)
 {
     request_sync_data_t* data = (request_sync_data_t*)user_data;
-    raid_reader_move(r, data->response_reader);
+    if (err == RAID_SUCCESS) {
+        raid_reader_move(r, data->response_reader);
+    }
+    else {
+        data->err = err;
+    }
 
     pthread_mutex_lock(&data->mutex);
     data->done = true;
@@ -150,7 +156,7 @@ raid_error_t raid_connect(raid_client_t* cl, const char* host, const char* port)
     return err;
 }
 
-raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_callback_t cb, void* user_data)
+raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_callback_t cb, void* user_data)
 {
     pthread_mutex_lock(&cl->reqs_mutex);
 
@@ -187,7 +193,7 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_callba
     return result;
 }
 
-raid_error_t raid_request_sync(raid_client_t* cl, const raid_writer_t* w, raid_reader_t* out)
+raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader_t* out)
 {
     request_sync_data_t* data = malloc(sizeof(request_sync_data_t));
     memset(data, 0, sizeof(request_sync_data_t));
@@ -203,7 +209,7 @@ raid_error_t raid_request_sync(raid_client_t* cl, const raid_writer_t* w, raid_r
         return RAID_UNKNOWN;
     }
 
-    raid_error_t res = raid_request(cl, w, sync_request_callback, (void*)data);
+    raid_error_t res = raid_request_async(cl, w, sync_request_callback, (void*)data);
     if (res != RAID_SUCCESS) {
         return res;
     }
@@ -216,9 +222,11 @@ raid_error_t raid_request_sync(raid_client_t* cl, const raid_writer_t* w, raid_r
 
     pthread_mutex_destroy(&data->mutex);
     pthread_cond_destroy(&data->cond_var);
+
+    res = data->err;
     free(data);
 
-    return RAID_SUCCESS;
+    return err;
 }
 
 raid_error_t raid_close(raid_client_t* cl)

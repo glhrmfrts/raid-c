@@ -9,11 +9,11 @@ void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len);
 void raid_reader_move(raid_reader_t* from, raid_reader_t* to);
 
 
-raid_error_t raid_write_key_value_int(raid_client_t* cl, const char* key, size_t key_len, int n);
+raid_error_t raid_write_key_value_int(raid_writer_t* cl, const char* key, size_t key_len, int n);
 
-raid_error_t raid_write_key_value_float(raid_client_t* cl, const char* key, size_t key_len, float n);
+raid_error_t raid_write_key_value_float(raid_writer_t* cl, const char* key, size_t key_len, float n);
 
-raid_error_t raid_write_key_value_string(raid_client_t* cl, const char* key, size_t key_len, const char* str, size_t len);
+raid_error_t raid_write_key_value_string(raid_writer_t* cl, const char* key, size_t key_len, const char* str, size_t len);
 
 
 raid_error_t raid_socket_connect(raid_socket_t* s, const char* host, const char* port);

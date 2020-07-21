@@ -3,21 +3,23 @@
  *  @brief Raid client functions.
  *
  *  Example usage:
- * 
+ *
  *  raid_client_t client;
- * 
+ *
  *  raid_error_t err = raid_connect(&client, "host", "port");
- * 
+ *
  *  raid_writer_t w;
+ *  raid_writer_init(&w);
  *  raid_write_message(&w, "api.action");
  *  raid_write_mapf(&w, 2, "'somenumber' %d 'somestr' %s", 42, "mystring");
- *  raid_request(&client, &w, response_callback, NULL); // Async request
- * 
+ *  raid_request_async(&client, &w, response_callback, NULL); // Async request
+ *
  *  raid_reader_t r;
- *  raid_request_sync(&client, &w, &r); // Sync request
- * 
- *  raid_write_destroy(&w); // When writer is not needed anymore
- *  raid_read_destroy(&r); // When reader is not needed anymore
+ *  raid_reader_init(&r);
+ *  raid_request(&client, &w, &r); // Sync request
+ *
+ *  raid_writer_destroy(&w); // When writer is not needed anymore
+ *  raid_reader_destroy(&r); // When reader is not needed anymore
  *  raid_close(&client); // Close connection
  */
 
@@ -126,7 +128,7 @@ raid_error_t raid_connect(raid_client_t* cl, const char* host, const char* port)
  * @param user_data Callback user data.
  * @return Any errors that might occur.
  */
-raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_callback_t cb, void* user_data);
+raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_callback_t cb, void* user_data);
 
 /**
  * @brief Send a request to the raid server and block until response is received.
@@ -136,7 +138,7 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_callba
  * @param r Reader to receive response.
  * @return Any errors that might occur.
  */
-raid_error_t raid_request_sync(raid_client_t* cl, const raid_writer_t* w, raid_reader_t* r);
+raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader_t* r);
 
 /**
  * @brief Close the connection, making subsequent calls invalid.
