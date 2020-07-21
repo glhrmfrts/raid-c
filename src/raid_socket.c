@@ -113,11 +113,10 @@ static raid_error_t socket_impl_disconnect(raid_socket_t* s)
 static raid_error_t socket_impl_connect(raid_socket_t* s)
 {
     int ret = 0;
-    int conn_fd;
 
     // Translate the human-readable address to a network binary address.
     struct addrinfo* addr_info = NULL;
-    struct addrinfo hints = {};
+    struct addrinfo hints = { 0 };
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
@@ -146,7 +145,7 @@ static raid_error_t socket_impl_connect(raid_socket_t* s)
 
     // Set the socket recv timeout
     const int kSocketTimeoutSeconds = 10;
-    struct timeval tv = {};
+    struct timeval tv = { 0 };
     tv.tv_sec = kSocketTimeoutSeconds;
     tv.tv_usec = 0;
     setsockopt((int)s->handle, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
