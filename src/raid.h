@@ -4,6 +4,7 @@
  *
  *  Example usage:
  *
+ *  @code
  *  raid_client_t client;
  *
  *  raid_error_t err = raid_connect(&client, "host", "port");
@@ -18,9 +19,13 @@
  *  raid_reader_init(&r);
  *  raid_request(&client, &w, &r); // Sync request
  *
+ *  int64_t number;
+ *  raid_read_int(&r, &number); // In this example, the server returns a number
+ *
  *  raid_writer_destroy(&w); // When writer is not needed anymore
  *  raid_reader_destroy(&r); // When reader is not needed anymore
  *  raid_close(&client); // Close connection
+ *  @endcode
  */
 
 #ifndef RAID_H
