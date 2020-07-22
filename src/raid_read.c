@@ -21,6 +21,12 @@ void raid_reader_init(raid_reader_t* r)
     msgpack_zone_init(r->mempool, 2048);
 }
 
+void raid_reader_init_with_data(raid_reader_t* r, const char* data, size_t data_len)
+{
+    raid_reader_init(r);
+    raid_reader_set_data(r, data, data_len);
+}
+
 void raid_reader_destroy(raid_reader_t* r)
 {
     if (r->mempool != NULL) {

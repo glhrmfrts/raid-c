@@ -163,6 +163,14 @@ raid_error_t raid_close(raid_client_t* cl);
 void raid_reader_init(raid_reader_t* r);
 
 /**
+ * @brief Initialize the reader state with data.
+ * 
+ * @param r Reader instance.
+ * @param w Writer instance.
+ */
+void raid_reader_init_with_data(raid_reader_t* r, const char* data, size_t data_len);
+
+/**
  * @brief Destroy the reader state.
  * 
  * @param r Reader instance.
@@ -292,6 +300,15 @@ void raid_writer_destroy(raid_writer_t* w);
  * @return Any errors that might occur.
  */
 raid_error_t raid_write_message(raid_writer_t* w, const char* action);
+
+/**
+ * @brief Begin writing a request message that does not have a body, only header.
+ * 
+ * @param w Raid client instance.
+ * @param action Action of the message.
+ * @return Any errors that might occur.
+ */
+raid_error_t raid_write_message_without_body(raid_writer_t* w, const char* action);
 
 /**
  * @brief Write an integer in the request body.

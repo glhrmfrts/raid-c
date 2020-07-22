@@ -25,6 +25,34 @@ static const char* gen_etag()
     return buf;
 }
 
+static raid_error_t raid_write_message_ex(raid_writer_t* w, const char* action, bool write_body)
+{
+    msgpack_sbuffer_clear(&w->sbuf);
+
+    /* serialize values into the buffer using msgpack_sbuffer_write callback function. */
+    msgpack_packer* pk = &w->pk;
+    msgpack_packer_init(pk, &w->sbuf, msgpack_sbuffer_write);
+    msgpack_pack_map(pk, write_body ? 2 : 1);
+
+    msgpack_pack_str_with_body(pk, RAID_KEY_HEADER, sizeof(RAID_KEY_HEADER) - 1);
+    {
+        msgpack_pack_map(pk, 2);
+
+        const char* etag = gen_etag();
+        msgpack_pack_str_with_body(pk, RAID_KEY_ACTION, sizeof(RAID_KEY_ACTION) - 1);
+        msgpack_pack_str_with_body(pk, action, strlen(action));
+        msgpack_pack_str_with_body(pk, RAID_KEY_ETAG, sizeof(RAID_KEY_ETAG) - 1);
+        msgpack_pack_str_with_body(pk, etag, strlen(etag));
+        w->etag = etag;
+    }
+
+    if (write_body) {
+        msgpack_pack_str_with_body(pk, RAID_KEY_BODY, sizeof(RAID_KEY_BODY) - 1);
+    }
+
+    return RAID_SUCCESS;
+}
+
 void raid_writer_init(raid_writer_t* w)
 {
     memset(w, 0, sizeof(raid_writer_t));
@@ -38,26 +66,12 @@ void raid_writer_destroy(raid_writer_t* w)
 
 raid_error_t raid_write_message(raid_writer_t* w, const char* action)
 {
-    msgpack_sbuffer_clear(&w->sbuf);
+    return raid_write_message_ex(w, action, true);
+}
 
-    /* serialize values into the buffer using msgpack_sbuffer_write callback function. */
-    msgpack_packer* pk = &w->pk;
-    msgpack_packer_init(pk, &w->sbuf, msgpack_sbuffer_write);
-    msgpack_pack_map(pk, 2);
-
-    msgpack_pack_str_with_body(pk, RAID_KEY_HEADER, sizeof(RAID_KEY_HEADER) - 1);
-    {
-        msgpack_pack_map(pk, 2);
-
-        const char* etag = gen_etag();
-        msgpack_pack_str_with_body(pk, RAID_KEY_ACTION, sizeof(RAID_KEY_ACTION) - 1);
-        msgpack_pack_str_with_body(pk, action, strlen(action));
-        msgpack_pack_str_with_body(pk, RAID_KEY_ETAG, sizeof(RAID_KEY_ETAG) - 1);
-        msgpack_pack_str_with_body(pk, etag, strlen(etag));
-        w->etag = etag;
-    }
-    msgpack_pack_str_with_body(pk, RAID_KEY_BODY, sizeof(RAID_KEY_BODY) - 1);
-    return RAID_SUCCESS;
+raid_error_t raid_write_message_without_body(raid_writer_t* w, const char* action)
+{
+    return raid_write_message_ex(w, action, false);
 }
 
 raid_error_t raid_write_int(raid_writer_t* w, int n)
@@ -95,6 +109,13 @@ raid_error_t raid_write_map(raid_writer_t* w, size_t keys_len)
     return RAID_SUCCESS;
 }
 
+raid_error_t raid_write_object(raid_writer_t* w, const msgpack_object* obj)
+{
+    msgpack_packer* pk = &w->pk;
+    msgpack_pack_object(pk, *obj);
+    return RAID_SUCCESS;
+}
+
 raid_error_t raid_write_key_value_int(raid_writer_t* w, const char* key, size_t key_len, int n)
 {
     msgpack_packer* pk = &w->pk;
@@ -116,6 +137,14 @@ raid_error_t raid_write_key_value_string(raid_writer_t* w, const char* key, size
     msgpack_packer* pk = &w->pk;
     msgpack_pack_str_with_body(pk, key, key_len);
     msgpack_pack_str_with_body(pk, str, len);
+    return RAID_SUCCESS;
+}
+
+raid_error_t raid_write_key_value_object(raid_writer_t* w, const char* key, size_t key_len, const msgpack_object* obj)
+{
+    msgpack_packer* pk = &w->pk;
+    msgpack_pack_str_with_body(pk, key, key_len);
+    msgpack_pack_object(pk, *obj);
     return RAID_SUCCESS;
 }
 
@@ -156,6 +185,11 @@ raid_error_t raid_write_arrayf(raid_writer_t* w, int n, const char* format, ...)
         case 's': {
             const char* str_arg = va_arg(args, char*);
             raid_write_string(w, str_arg, strlen(str_arg));
+            break;
+        }
+        case 'o': {
+            const msgpack_object* obj_arg = va_arg(args, msgpack_object*);
+            raid_write_object(w, obj_arg);
             break;
         }
         }
@@ -232,6 +266,11 @@ raid_error_t raid_write_mapf(raid_writer_t* w, int n, const char* format, ...)
         case 's': {
             const char* str_arg = va_arg(args, char*);
             raid_write_key_value_string(w, key, key_len, str_arg, strlen(str_arg));
+            break;
+        }
+        case 'o': {
+            const msgpack_object* obj_arg = va_arg(args, msgpack_object*);
+            raid_write_key_value_object(w, key, key_len, obj_arg);
             break;
         }
         }
