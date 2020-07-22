@@ -216,6 +216,8 @@ bool raid_read_float(raid_reader_t* r, double* res);
  */
 bool raid_read_string(raid_reader_t* r, char** res, size_t* len);
 
+bool raid_read_cstring(raid_reader_t* r, char** res);
+
 /**
  * @brief Reads the current map key.
  * 
@@ -225,6 +227,8 @@ bool raid_read_string(raid_reader_t* r, char** res, size_t* len);
  * @return Whether the value could be read or not.
  */
 bool raid_read_map_key(raid_reader_t* r, char** key, size_t* len);
+
+bool raid_is_map_key(raid_reader_t* r, const char* key);
 
 /**
  * @brief Begins reading an array from the response message body.

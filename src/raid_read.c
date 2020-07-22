@@ -115,6 +115,21 @@ bool raid_read_string(raid_reader_t* r, char** res, size_t* len)
     return true;
 }
 
+bool raid_read_cstring(raid_reader_t* r, char** res)
+{
+    if (!r->header) return false;
+
+    if (r->nested->type != MSGPACK_OBJECT_STR && r->nested->type != MSGPACK_OBJECT_BIN)
+        return false;
+
+    const char* ptr = r->nested->via.str.ptr;
+    size_t len = r->nested->via.str.size;
+    *res = malloc(len + 1);
+    memcpy(*res, ptr, len);
+    (*res)[len] = '\0';
+    return true;
+}
+
 bool raid_read_map_key(raid_reader_t* r, char** key, size_t* len)
 {
     if (!r->header) return false;
@@ -128,6 +143,18 @@ bool raid_read_map_key(raid_reader_t* r, char** key, size_t* len)
     *key = malloc(*len);
     memcpy(*key, ptr, *len);
     return true;
+}
+
+bool raid_is_map_key(raid_reader_t* r, const char* key)
+{
+    if (!r->header) return false;
+
+    if (!r->parent || r->parent->type != MSGPACK_OBJECT_MAP)
+        return false;
+
+    msgpack_object* obj = &r->parent->via.map.ptr[r->indices[r->nested_top]].key;
+    const char* ptr = obj->via.str.ptr;
+    return !strncmp(ptr, key, obj->via.str.size);
 }
 
 bool raid_read_begin_array(raid_reader_t* r, size_t* len)

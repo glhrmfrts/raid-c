@@ -127,10 +127,8 @@ static void sync_request_callback(raid_client_t* cl, raid_reader_t* r, raid_erro
     if (err == RAID_SUCCESS) {
         raid_reader_swap(r, data->response_reader);
     }
-    else {
-        data->err = err;
-    }
 
+    data->err = err;
     pthread_mutex_lock(&data->mutex);
     data->done = true;
     pthread_cond_signal(&data->cond_var);
@@ -154,6 +152,11 @@ raid_error_t raid_connect(raid_client_t* cl, const char* host, const char* port)
         }
     }
     return err;
+}
+
+bool raid_connected(raid_client_t* cl)
+{
+    return raid_socket_connected(&cl->socket);
 }
 
 raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_callback_t cb, void* user_data)
@@ -211,6 +214,8 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
 
     raid_error_t res = raid_request_async(cl, w, sync_request_callback, (void*)data);
     if (res != RAID_SUCCESS) {
+        pthread_mutex_destroy(&data->mutex);
+        pthread_cond_destroy(&data->cond_var);
         return res;
     }
 
@@ -226,7 +231,7 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
     res = data->err;
     free(data);
 
-    return err;
+    return res;
 }
 
 raid_error_t raid_close(raid_client_t* cl)
