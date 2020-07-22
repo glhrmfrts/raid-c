@@ -124,6 +124,8 @@ typedef struct raid_client {
  */
 raid_error_t raid_connect(raid_client_t* cl, const char* host, const char* port);
 
+bool raid_connected(raid_client_t* cl);
+
 /**
  * @brief Send a request to the raid server.
  * 
