@@ -45,7 +45,7 @@ static raid_error_t raid_write_message_ex(raid_writer_t* w, const char* action, 
     return RAID_SUCCESS;
 }
 
-const char* raid_gen_etag()
+char* raid_gen_etag()
 {
     static const char ucase[] = "ncdhnwydfusigcfusgcfcsgrfAJSGDIAJSHDLQUWHDKAJHD";
     static char buf[9];
@@ -93,7 +93,7 @@ raid_error_t raid_write_int(raid_writer_t* w, int64_t n)
     return RAID_SUCCESS;
 }
 
-raid_error_t raid_write_float(raid_writer_t* w, float n)
+raid_error_t raid_write_float(raid_writer_t* w, double n)
 {
     msgpack_packer* pk = &w->pk;
     msgpack_pack_float(pk, n);
@@ -136,7 +136,7 @@ raid_error_t raid_write_key_value_int(raid_writer_t* w, const char* key, size_t 
     return RAID_SUCCESS;
 }
 
-raid_error_t raid_write_key_value_float(raid_writer_t* w, const char* key, size_t key_len, float n)
+raid_error_t raid_write_key_value_float(raid_writer_t* w, const char* key, size_t key_len, double n)
 {
     msgpack_packer* pk = &w->pk;
     msgpack_pack_str_with_body(pk, key, key_len);

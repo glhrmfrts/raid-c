@@ -69,7 +69,7 @@ typedef struct raid_reader {
 typedef struct raid_writer {
     msgpack_sbuffer sbuf;
     msgpack_packer pk;
-    const char* etag;
+    char* etag;
 } raid_writer_t;
 
 /**
@@ -156,11 +156,11 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
 raid_error_t raid_close(raid_client_t* cl);
 
 /**
- * @brief Generates an etag (random string).
+ * @brief Generates an etag (random string), the caller owns the string.
  * 
  * @return Any errors that might occur.
  */
-const char* raid_gen_etag();
+char* raid_gen_etag();
 
 /**
  * @brief Initialize the reader state.
@@ -185,6 +185,14 @@ void raid_reader_init_with_data(raid_reader_t* r, const char* data, size_t data_
 void raid_reader_destroy(raid_reader_t* r);
 
 /**
+ * @brief Swap the contents of two readers.
+ * 
+ * @param from First reader.
+ * @param to Second reader.
+ */
+void raid_reader_swap(raid_reader_t* from, raid_reader_t* to);
+
+/**
  * @brief Returns true if the response message code is equal to this one.
  * 
  * @param r Raid client instance.
@@ -202,6 +210,15 @@ bool raid_is_code(raid_reader_t* r, const char* code);
  * @return Whether the code could be read or not.
  */
 bool raid_read_code(raid_reader_t* r, char** res, size_t* len);
+
+/**
+ * @brief Reads the null-terminated code from the response message.
+ * 
+ * @param r Raid client instance.
+ * @param res Pointer to receive the code string.
+ * @return Whether the code could be read or not.
+ */
+bool raid_read_code_cstring(raid_reader_t* r, char** res);
 
 /**
  * @brief Reads an integer from the response message body.
@@ -348,7 +365,7 @@ raid_error_t raid_write_message_without_body(raid_writer_t* w, const char* actio
  * @param n Integer number.
  * @return Any errors that might occur.
  */
-raid_error_t raid_write_int(raid_writer_t* w, int n);
+raid_error_t raid_write_int(raid_writer_t* w, int64_t n);
 
 /**
  * @brief Write a float in the request body.
@@ -357,7 +374,7 @@ raid_error_t raid_write_int(raid_writer_t* w, int n);
  * @param n Float number.
  * @return Any errors that might occur.
  */
-raid_error_t raid_write_float(raid_writer_t* w, float n);
+raid_error_t raid_write_float(raid_writer_t* w, double n);
 
 /**
  * @brief Write a string in the request body.

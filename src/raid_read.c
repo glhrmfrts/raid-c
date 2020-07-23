@@ -90,6 +90,24 @@ bool raid_read_code(raid_reader_t* r, char** res, size_t* len)
     return false;
 }
 
+
+bool raid_read_code_cstring(raid_reader_t* r, char** res)
+{
+    if (!r->header) return false;
+
+    for (int i = 0; i < r->header->via.map.size; i++) {
+        const char* ptr = r->header->via.map.ptr[i].val.via.str.ptr;
+        size_t size = r->header->via.map.ptr[i].val.via.str.size;
+        if (!strncmp("code", r->header->via.map.ptr[i].key.via.str.ptr, 4)) {
+            *res = malloc(size+1);
+            memcpy(*res, ptr, size);
+            (*res)[size] = '\0';
+            return true;
+        }
+    }
+    return false;
+}
+
 bool raid_read_int(raid_reader_t* r, int64_t* res)
 {
     if (!r->nested) return false;
