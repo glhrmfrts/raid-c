@@ -24,7 +24,7 @@ void raid_reader_init(raid_reader_t* r)
 void raid_reader_init_with_data(raid_reader_t* r, const char* data, size_t data_len)
 {
     raid_reader_init(r);
-    raid_reader_set_data(r, data, data_len);
+    raid_reader_set_data(r, data, data_len, false);
 }
 
 void raid_reader_destroy(raid_reader_t* r)
@@ -46,14 +46,19 @@ void raid_reader_swap(raid_reader_t* from, raid_reader_t* to)
     memcpy(to, &tmp, sizeof(raid_reader_t));
 }
 
-void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len)
+void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len, bool is_response)
 {
     msgpack_unpack(data, data_len, NULL, r->mempool, r->obj);
-    r->body = r->nested = find_obj(r->obj, "body");
-    r->header = find_obj(r->obj, "header");
-    if (!r->header) return;
+    if (is_response) {
+        r->body = r->nested = find_obj(r->obj, "body");
+        r->header = find_obj(r->obj, "header");
+        if (!r->header) return;
 
-    r->etag_obj = find_obj(r->header, "etag");
+        r->etag_obj = find_obj(r->header, "etag");
+    }
+    else {
+        r->body = r->nested = r->obj;
+    }
 }
 
 bool raid_is_code(raid_reader_t* r, const char* code)
@@ -87,7 +92,7 @@ bool raid_read_code(raid_reader_t* r, char** res, size_t* len)
 
 bool raid_read_int(raid_reader_t* r, int64_t* res)
 {
-    if (!r->header) return false;
+    if (!r->nested) return false;
 
     if (r->nested->type != MSGPACK_OBJECT_POSITIVE_INTEGER && r->nested->type != MSGPACK_OBJECT_NEGATIVE_INTEGER)
         return false;
@@ -98,7 +103,7 @@ bool raid_read_int(raid_reader_t* r, int64_t* res)
 
 bool raid_read_float(raid_reader_t* r, double* res)
 {
-    if (!r->header) return false;
+    if (!r->nested) return false;
 
     if (r->nested->type != MSGPACK_OBJECT_FLOAT)
         return false;
@@ -109,7 +114,7 @@ bool raid_read_float(raid_reader_t* r, double* res)
 
 bool raid_read_string(raid_reader_t* r, char** res, size_t* len)
 {
-    if (!r->header) return false;
+    if (!r->nested) return false;
 
     if (r->nested->type != MSGPACK_OBJECT_STR && r->nested->type != MSGPACK_OBJECT_BIN)
         return false;
@@ -123,7 +128,7 @@ bool raid_read_string(raid_reader_t* r, char** res, size_t* len)
 
 bool raid_read_cstring(raid_reader_t* r, char** res)
 {
-    if (!r->header) return false;
+    if (!r->nested) return false;
 
     if (r->nested->type != MSGPACK_OBJECT_STR && r->nested->type != MSGPACK_OBJECT_BIN)
         return false;
@@ -138,7 +143,7 @@ bool raid_read_cstring(raid_reader_t* r, char** res)
 
 bool raid_read_map_key(raid_reader_t* r, char** key, size_t* len)
 {
-    if (!r->header) return false;
+    if (!r->nested) return false;
 
     if (!r->parent || r->parent->type != MSGPACK_OBJECT_MAP)
         return false;
@@ -153,7 +158,7 @@ bool raid_read_map_key(raid_reader_t* r, char** key, size_t* len)
 
 bool raid_is_map_key(raid_reader_t* r, const char* key)
 {
-    if (!r->header) return false;
+    if (!r->nested || !r->parent) return false;
 
     if (!r->parent || r->parent->type != MSGPACK_OBJECT_MAP)
         return false;
@@ -165,7 +170,7 @@ bool raid_is_map_key(raid_reader_t* r, const char* key)
 
 bool raid_read_begin_array(raid_reader_t* r, size_t* len)
 {
-    if (!r->header) return false;
+    if (!r->nested) return false;
 
     if (r->nested->type != MSGPACK_OBJECT_ARRAY)
         return false;
@@ -181,7 +186,7 @@ bool raid_read_begin_array(raid_reader_t* r, size_t* len)
 
 void raid_read_end_array(raid_reader_t* r)
 {
-    if (!r->header) return;
+    if (!r->nested) return;
 
     r->nested_top--;
     r->nested = r->parents[r->nested_top];
@@ -189,7 +194,7 @@ void raid_read_end_array(raid_reader_t* r)
 
 bool raid_read_begin_map(raid_reader_t* r, size_t* len)
 {
-    if (!r->header) return false;
+    if (!r->nested) return false;
 
     if (r->nested->type != MSGPACK_OBJECT_MAP)
         return false;
@@ -205,7 +210,7 @@ bool raid_read_begin_map(raid_reader_t* r, size_t* len)
 
 void raid_read_end_map(raid_reader_t* r)
 {
-    if (!r->header) return;
+    if (!r->nested) return;
 
     r->nested_top--;
     r->nested = r->parents[r->nested_top];
@@ -213,7 +218,7 @@ void raid_read_end_map(raid_reader_t* r)
 
 bool raid_read_next(raid_reader_t* r)
 {
-    if (!r->header) return false;
+    if (!r->nested || !r->parent) return false;
 
     if (r->parent->type == MSGPACK_OBJECT_ARRAY) {
         int* idx = &r->indices[r->nested_top];

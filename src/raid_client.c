@@ -65,7 +65,7 @@ static void parse_response(raid_client_t* cl)
 {
     raid_reader_t r;
     raid_reader_init(&r);
-    raid_reader_set_data(&r, cl->msg_buf, cl->msg_len);
+    raid_reader_set_data(&r, cl->msg_buf, cl->msg_len, true);
 
     if (r.obj->type == MSGPACK_OBJECT_MAP) {
         reply_request(cl, &r);

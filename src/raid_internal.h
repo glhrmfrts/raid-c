@@ -4,7 +4,7 @@
 #include "raid.h"
 
 
-void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len);
+void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len, bool is_response);
 
 void raid_reader_swap(raid_reader_t* from, raid_reader_t* to);
 

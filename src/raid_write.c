@@ -18,10 +18,20 @@ static void msgpack_pack_str_with_body(msgpack_packer* pk, const char* str, size
 
 static const char* gen_etag()
 {
-    static char buf[16];
-    time_t t;
-    time(&t);
-    sprintf(buf, "%ld", t);
+    static const char ucase[] = "ncdhnwydfusigcfusgcfcsgrfAJSGDIAJSHDLQUWHDKAJHD";
+    static char buf[9];
+    static int64_t cnt;
+    srand(time(NULL)+(cnt++)*3);
+
+    const size_t ucase_count = sizeof(ucase) - 1;
+    for (int i = 0; i < sizeof(buf)-1; i++) {
+        char random_char;
+        int random_index = (double)rand() / RAND_MAX * ucase_count;
+        random_char = ucase[random_index];
+        buf[i] = random_char;
+    }
+    buf[8] = '\0';
+
     return buf;
 }
 
@@ -31,7 +41,6 @@ static raid_error_t raid_write_message_ex(raid_writer_t* w, const char* action, 
 
     /* serialize values into the buffer using msgpack_sbuffer_write callback function. */
     msgpack_packer* pk = &w->pk;
-    msgpack_packer_init(pk, &w->sbuf, msgpack_sbuffer_write);
     msgpack_pack_map(pk, write_body ? 2 : 1);
 
     msgpack_pack_str_with_body(pk, RAID_KEY_HEADER, sizeof(RAID_KEY_HEADER) - 1);
@@ -57,6 +66,7 @@ void raid_writer_init(raid_writer_t* w)
 {
     memset(w, 0, sizeof(raid_writer_t));
     msgpack_sbuffer_init(&w->sbuf);
+    msgpack_packer_init(&w->pk, &w->sbuf, msgpack_sbuffer_write);
 }
 
 void raid_writer_destroy(raid_writer_t* w)
