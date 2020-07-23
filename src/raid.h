@@ -224,7 +224,24 @@ bool raid_read_float(raid_reader_t* r, double* res);
  */
 bool raid_read_string(raid_reader_t* r, char** res, size_t* len);
 
+/**
+ * @brief Reads a string from the response message body and null-terminates it.
+ * 
+ * @param r Raid client instance.
+ * @param res Pointer to receive string value.
+ * @return Whether the value could be read or not.
+ */
 bool raid_read_cstring(raid_reader_t* r, char** res);
+
+/**
+ * @brief Copy a string from the response message body to a pre-allocated buffer.
+ * 
+ * @param r Raid client instance.
+ * @param buf A pointer to an allocated buffer to receive string value.
+ * @param buf_len Size of the buffer.
+ * @return Returns false if the buffer size is not enough to hold the complete string.
+ */
+bool raid_copy_cstring(raid_reader_t* r, char* buf, size_t buf_len);
 
 /**
  * @brief Reads the current map key.
@@ -236,6 +253,13 @@ bool raid_read_cstring(raid_reader_t* r, char** res);
  */
 bool raid_read_map_key(raid_reader_t* r, char** key, size_t* len);
 
+/**
+ * @brief Compares the current map key.
+ * 
+ * @param r Raid client instance.
+ * @param key String to compare to.
+ * @return Whether the current map key is equal to the argument or not.
+ */
 bool raid_is_map_key(raid_reader_t* r, const char* key);
 
 /**

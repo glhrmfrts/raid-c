@@ -84,10 +84,10 @@ raid_error_t raid_write_message_without_body(raid_writer_t* w, const char* actio
     return raid_write_message_ex(w, action, false);
 }
 
-raid_error_t raid_write_int(raid_writer_t* w, int n)
+raid_error_t raid_write_int(raid_writer_t* w, int64_t n)
 {
     msgpack_packer* pk = &w->pk;
-    msgpack_pack_int32(pk, n);
+    msgpack_pack_int64(pk, n);
     return RAID_SUCCESS;
 }
 
@@ -126,11 +126,11 @@ raid_error_t raid_write_object(raid_writer_t* w, const msgpack_object* obj)
     return RAID_SUCCESS;
 }
 
-raid_error_t raid_write_key_value_int(raid_writer_t* w, const char* key, size_t key_len, int n)
+raid_error_t raid_write_key_value_int(raid_writer_t* w, const char* key, size_t key_len, int64_t n)
 {
     msgpack_packer* pk = &w->pk;
     msgpack_pack_str_with_body(pk, key, key_len);
-    msgpack_pack_int(pk, n);
+    msgpack_pack_int64(pk, n);
     return RAID_SUCCESS;
 }
 
@@ -183,7 +183,7 @@ raid_error_t raid_write_arrayf(raid_writer_t* w, int n, const char* format, ...)
 
         switch (c) {
         case 'd': {
-            int int_arg = va_arg(args, int);
+            int64_t int_arg = va_arg(args, int64_t);
             raid_write_int(w, int_arg);
             break;
         }
@@ -264,7 +264,7 @@ raid_error_t raid_write_mapf(raid_writer_t* w, int n, const char* format, ...)
 
         switch (c) {
         case 'd': {
-            int int_arg = va_arg(args, int);
+            int64_t int_arg = va_arg(args, int64_t);
             raid_write_key_value_int(w, key, key_len, int_arg);
             break;
         }

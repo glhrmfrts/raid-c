@@ -141,6 +141,23 @@ bool raid_read_cstring(raid_reader_t* r, char** res)
     return true;
 }
 
+bool raid_copy_cstring(raid_reader_t* r, char* buf, size_t buf_len)
+{
+    if (!r->nested) return false;
+
+    if (r->nested->type != MSGPACK_OBJECT_STR && r->nested->type != MSGPACK_OBJECT_BIN)
+        return false;
+
+    const char* ptr = r->nested->via.str.ptr;
+    size_t len = r->nested->via.str.size;
+    if (len > buf_len - 1)
+        return false;
+
+    memcpy(buf, ptr, len);
+    buf[len] = '\0';
+    return true;
+}
+
 bool raid_read_map_key(raid_reader_t* r, char** key, size_t* len)
 {
     if (!r->nested) return false;

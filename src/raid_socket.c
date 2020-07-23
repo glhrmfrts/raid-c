@@ -77,6 +77,7 @@ static raid_error_t socket_impl_recv(raid_socket_t* s, char* buf, size_t buf_len
 {
     *out_len = recv(s->handle, buf, buf_len, 0);
     int err = WSAGetLastError();
+    
     if (errno == EWOULDBLOCK || errno == EAGAIN || err == WSAETIMEDOUT) {
         return RAID_RECV_TIMEOUT;
     }
