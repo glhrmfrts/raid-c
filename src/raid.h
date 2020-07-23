@@ -156,6 +156,13 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
 raid_error_t raid_close(raid_client_t* cl);
 
 /**
+ * @brief Generates an etag (random string).
+ * 
+ * @return Any errors that might occur.
+ */
+const char* raid_gen_etag();
+
+/**
  * @brief Initialize the reader state.
  * 
  * @param r Reader instance.

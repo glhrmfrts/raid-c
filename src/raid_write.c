@@ -16,7 +16,36 @@ static void msgpack_pack_str_with_body(msgpack_packer* pk, const char* str, size
     msgpack_pack_str_body(pk, str, len);
 }
 
-static const char* gen_etag()
+static raid_error_t raid_write_message_ex(raid_writer_t* w, const char* action, bool write_body)
+{
+    msgpack_sbuffer_clear(&w->sbuf);
+
+    /* serialize values into the buffer using msgpack_sbuffer_write callback function. */
+    msgpack_packer* pk = &w->pk;
+    msgpack_pack_map(pk, write_body ? 2 : 1);
+
+    msgpack_pack_str_with_body(pk, RAID_KEY_HEADER, sizeof(RAID_KEY_HEADER) - 1);
+    {
+        msgpack_pack_map(pk, 2);
+
+        if (w->etag) {
+            free(w->etag);
+        }
+        w->etag = raid_gen_etag();
+        msgpack_pack_str_with_body(pk, RAID_KEY_ACTION, sizeof(RAID_KEY_ACTION) - 1);
+        msgpack_pack_str_with_body(pk, action, strlen(action));
+        msgpack_pack_str_with_body(pk, RAID_KEY_ETAG, sizeof(RAID_KEY_ETAG) - 1);
+        msgpack_pack_str_with_body(pk, w->etag, strlen(w->etag));
+    }
+
+    if (write_body) {
+        msgpack_pack_str_with_body(pk, RAID_KEY_BODY, sizeof(RAID_KEY_BODY) - 1);
+    }
+
+    return RAID_SUCCESS;
+}
+
+const char* raid_gen_etag()
 {
     static const char ucase[] = "ncdhnwydfusigcfusgcfcsgrfAJSGDIAJSHDLQUWHDKAJHD";
     static char buf[9];
@@ -32,34 +61,7 @@ static const char* gen_etag()
     }
     buf[8] = '\0';
 
-    return buf;
-}
-
-static raid_error_t raid_write_message_ex(raid_writer_t* w, const char* action, bool write_body)
-{
-    msgpack_sbuffer_clear(&w->sbuf);
-
-    /* serialize values into the buffer using msgpack_sbuffer_write callback function. */
-    msgpack_packer* pk = &w->pk;
-    msgpack_pack_map(pk, write_body ? 2 : 1);
-
-    msgpack_pack_str_with_body(pk, RAID_KEY_HEADER, sizeof(RAID_KEY_HEADER) - 1);
-    {
-        msgpack_pack_map(pk, 2);
-
-        const char* etag = gen_etag();
-        msgpack_pack_str_with_body(pk, RAID_KEY_ACTION, sizeof(RAID_KEY_ACTION) - 1);
-        msgpack_pack_str_with_body(pk, action, strlen(action));
-        msgpack_pack_str_with_body(pk, RAID_KEY_ETAG, sizeof(RAID_KEY_ETAG) - 1);
-        msgpack_pack_str_with_body(pk, etag, strlen(etag));
-        w->etag = etag;
-    }
-
-    if (write_body) {
-        msgpack_pack_str_with_body(pk, RAID_KEY_BODY, sizeof(RAID_KEY_BODY) - 1);
-    }
-
-    return RAID_SUCCESS;
+    return strdup(buf);
 }
 
 void raid_writer_init(raid_writer_t* w)

@@ -175,11 +175,7 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
     req->next = cl->reqs;
     req->prev = NULL;
     cl->reqs = req;
-
-    pthread_mutex_unlock(&cl->reqs_mutex);
-
-    //printf("%s\n", cl->out_writer.sbuf.data);
-
+    
     // Send data to socket
     int32_t size = w->sbuf.size;
     static char data_size[4];
@@ -192,6 +188,8 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
     if (!result) {
         result = raid_socket_send(&cl->socket, w->sbuf.data, size);
     }
+
+    pthread_mutex_unlock(&cl->reqs_mutex);
 
     return result;
 }
