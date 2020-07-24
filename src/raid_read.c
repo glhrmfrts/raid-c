@@ -12,6 +12,33 @@ static msgpack_object* find_obj(msgpack_object* obj, const char* key)
     return NULL;
 }
 
+static int current_index(raid_reader_t* r)
+{
+    if (r->nested_top <= 0) return 0;
+
+    return r->indices[r->nested_top - 1];
+}
+
+static msgpack_object* parent(raid_reader_t* r)
+{
+    if (r->nested_top <= 0) return NULL;
+
+    return r->parents[r->nested_top - 1];
+}
+
+static void begin_collection(raid_reader_t* r)
+{
+    r->indices[r->nested_top] = 0;
+    r->parents[r->nested_top] = r->nested;
+    r->nested_top++;
+}
+
+static void end_collection(raid_reader_t* r)
+{
+    r->nested_top--;
+    r->nested = r->parents[r->nested_top];
+}
+
 void raid_reader_init(raid_reader_t* r)
 {
     memset(r, 0, sizeof(raid_reader_t));
@@ -210,10 +237,10 @@ bool raid_read_map_key(raid_reader_t* r, char** key, size_t* len)
 {
     if (!r->nested) return false;
 
-    if (!r->parent || r->parent->type != MSGPACK_OBJECT_MAP)
+    if (!parent(r) || parent(r)->type != MSGPACK_OBJECT_MAP)
         return false;
 
-    msgpack_object* obj = &r->parent->via.map.ptr[r->indices[r->nested_top]].key;
+    msgpack_object* obj = &parent(r)->via.map.ptr[current_index(r)].key;
     const char* ptr = obj->via.str.ptr;
     *len = obj->via.str.size;
     *key = malloc(*len);
@@ -225,12 +252,13 @@ bool raid_read_map_key_cstring(raid_reader_t* r, char** key)
 {
     if (!r->nested) return false;
 
-    if (!r->parent || r->parent->type != MSGPACK_OBJECT_MAP)
+    if (!parent(r) || parent(r)->type != MSGPACK_OBJECT_MAP)
         return false;
 
-    msgpack_object* obj = &r->parent->via.map.ptr[r->indices[r->nested_top]].key;
+    msgpack_object* obj = &parent(r)->via.map.ptr[current_index(r)].key;
     const char* ptr = obj->via.str.ptr;
     size_t size = obj->via.str.size;
+
     *key = malloc(size+1);
     memcpy(*key, ptr, size);
     (*key)[size] = '\0';
@@ -239,12 +267,12 @@ bool raid_read_map_key_cstring(raid_reader_t* r, char** key)
 
 bool raid_is_map_key(raid_reader_t* r, const char* key)
 {
-    if (!r->nested || !r->parent) return false;
+    if (!r->nested || !parent(r)) return false;
 
-    if (!r->parent || r->parent->type != MSGPACK_OBJECT_MAP)
+    if (!parent(r) || parent(r)->type != MSGPACK_OBJECT_MAP)
         return false;
 
-    msgpack_object* obj = &r->parent->via.map.ptr[r->indices[r->nested_top]].key;
+    msgpack_object* obj = &parent(r)->via.map.ptr[current_index(r)].key;
     const char* ptr = obj->via.str.ptr;
     return !strncmp(ptr, key, obj->via.str.size);
 }
@@ -258,10 +286,9 @@ bool raid_read_begin_array(raid_reader_t* r, size_t* len)
 
     *len = r->nested->via.array.size;
 
-    r->indices[r->nested_top] = 0;
-    r->parents[r->nested_top] = r->parent = r->nested;
+    begin_collection(r);
     r->nested = r->nested->via.array.ptr;
-    r->nested_top++;
+    
     return true;
 }
 
@@ -269,8 +296,7 @@ void raid_read_end_array(raid_reader_t* r)
 {
     if (!r->nested) return;
 
-    r->nested_top--;
-    r->nested = r->parents[r->nested_top];
+    end_collection(r);
 }
 
 bool raid_read_begin_map(raid_reader_t* r, size_t* len)
@@ -282,10 +308,8 @@ bool raid_read_begin_map(raid_reader_t* r, size_t* len)
 
     *len = r->nested->via.map.size;
 
-    r->indices[r->nested_top] = 0;
-    r->parents[r->nested_top] = r->parent = r->nested;
+    begin_collection(r);
     r->nested = &r->nested->via.map.ptr->val;
-    r->nested_top++;
     return true;
 }
 
@@ -293,24 +317,23 @@ void raid_read_end_map(raid_reader_t* r)
 {
     if (!r->nested) return;
 
-    r->nested_top--;
-    r->nested = r->parents[r->nested_top];
+    end_collection(r);
 }
 
 bool raid_read_next(raid_reader_t* r)
 {
-    if (!r->nested || !r->parent) return false;
+    if (!r->nested || !parent(r)) return false;
 
-    if (r->parent->type == MSGPACK_OBJECT_ARRAY) {
-        int* idx = &r->indices[r->nested_top];
+    if (parent(r)->type == MSGPACK_OBJECT_ARRAY) {
+        int* idx = &r->indices[r->nested_top - 1];
         *idx += 1;
-        r->nested = &r->parent->via.array.ptr[*idx];
+        r->nested = &parent(r)->via.array.ptr[*idx];
         return true;
     }
-    else if (r->parent->type == MSGPACK_OBJECT_MAP) {
-        int* idx = &r->indices[r->nested_top];
+    else if (parent(r)->type == MSGPACK_OBJECT_MAP) {
+        int* idx = &r->indices[r->nested_top - 1];
         *idx += 1;
-        r->nested = &r->parent->via.map.ptr[*idx].val;
+        r->nested = &parent(r)->via.map.ptr[*idx].val;
         return true;
     }
     return false;

@@ -22,6 +22,39 @@ static void debug_etags(raid_client_t* cl)
     }
 }
 
+static void call_before_send_callbacks(raid_client_t* cl, const char* data, size_t data_len)
+{
+    raid_callback_t* cb = cl->callbacks;
+    while (cb) {
+        if (cb->type == RAID_CALLBACK_BEFORE_SEND) {
+            cb->callback.before_send(cl, data, data_len, cb->user_data);
+        }
+        cb = cb->next;
+    }
+}
+
+static void call_after_recv_callbacks(raid_client_t* cl, const char* data, size_t data_len)
+{
+    raid_callback_t* cb = cl->callbacks;
+    while (cb) {
+        if (cb->type == RAID_CALLBACK_AFTER_RECV) {
+            cb->callback.after_recv(cl, data, data_len, cb->user_data);
+        }
+        cb = cb->next;
+    }
+}
+
+static void call_msg_recv_callbacks(raid_client_t* cl, raid_reader_t* r)
+{
+    raid_callback_t* cb = cl->callbacks;
+    while (cb) {
+        if (cb->type == RAID_CALLBACK_MSG_RECV) {
+            cb->callback.msg_recv(cl, r, cb->user_data);
+        }
+        cb = cb->next;
+    }
+}
+
 static raid_request_t* find_request(raid_client_t* cl, const char* etag)
 {
     raid_request_t* req = cl->reqs;
@@ -38,7 +71,10 @@ static void reply_request(raid_client_t* cl, raid_reader_t* r)
 {
     // Find the request to reply to.
     raid_request_t* req = find_request(cl, r->etag_obj->via.str.ptr);
-    if (!req) return;
+    if (!req) {
+        call_msg_recv_callbacks(cl, r);
+        return;
+    }
 
     // Fire the request callback.
     req->callback(cl, r, RAID_SUCCESS, req->callback_user_data);
@@ -80,10 +116,13 @@ static int read_message(raid_client_t* cl)
     case RAID_STATE_WAIT_MESSAGE: {
         if ((cl->in_end - cl->in_ptr) < 4) return -1;
 
-        uint32_t len = (cl->in_ptr[0] << 24) | (cl->in_ptr[1] << 16) | (cl->in_ptr[2] << 8) | (cl->in_ptr[3]);
+        uint32_t len = ((uint8_t)cl->in_ptr[0] << 24) | ((uint8_t)cl->in_ptr[1] << 16) | ((uint8_t)cl->in_ptr[2] << 8) | ((uint8_t)cl->in_ptr[3]);
         cl->state = RAID_STATE_PROCESSING_MESSAGE;
         cl->msg_total_size = len;
         cl->msg_len = 0;
+
+        //__android_log_print(ANDROID_LOG_DEBUG, "hcs-sdk-jni", "%u %u %u %u\n", (uint8_t)cl->in_ptr[0], (uint8_t)cl->in_ptr[1], (uint8_t)cl->in_ptr[2], (uint8_t)cl->in_ptr[3]);
+
         cl->msg_buf = malloc(cl->msg_total_size*sizeof(char));
         return 4;
     }
@@ -94,6 +133,7 @@ static int read_message(raid_client_t* cl)
         cl->msg_len += copy_len;
 
         if (cl->msg_len >= cl->msg_total_size) {
+            call_after_recv_callbacks(cl, cl->msg_buf, cl->msg_len);
             parse_response(cl);
             free(cl->msg_buf);
             cl->msg_buf = NULL;
@@ -159,7 +199,34 @@ bool raid_connected(raid_client_t* cl)
     return raid_socket_connected(&cl->socket);
 }
 
-raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_callback_t cb, void* user_data)
+void raid_add_before_send_callback(raid_client_t* cl, raid_before_send_callback_t cb, void* user_data)
+{
+    raid_callback_t* data = malloc(sizeof(raid_callback_t));
+    data->type = RAID_CALLBACK_BEFORE_SEND;
+    data->callback.before_send = cb;
+    data->user_data = user_data;
+    LIST_APPEND(cl->callbacks, data);
+}
+
+void raid_add_after_recv_callback(raid_client_t* cl, raid_after_recv_callback_t cb, void* user_data)
+{
+    raid_callback_t* data = malloc(sizeof(raid_callback_t));
+    data->type = RAID_CALLBACK_AFTER_RECV;
+    data->callback.after_recv = cb;
+    data->user_data = user_data;
+    LIST_APPEND(cl->callbacks, data);
+}
+
+void raid_add_msg_recv_callback(raid_client_t* cl, raid_msg_recv_callback_t cb, void* user_data)
+{
+    raid_callback_t* data = malloc(sizeof(raid_callback_t));
+    data->type = RAID_CALLBACK_MSG_RECV;
+    data->callback.msg_recv = cb;
+    data->user_data = user_data;
+    LIST_APPEND(cl->callbacks, data);
+}
+
+raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_response_callback_t cb, void* user_data)
 {
     pthread_mutex_lock(&cl->reqs_mutex);
 
@@ -183,6 +250,8 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
     data_size[1] = (size >> 16) & 0xFF;
     data_size[2] = (size >> 8) & 0xFF;
     data_size[3] = size & 0xFF;
+
+    call_before_send_callbacks(cl, w->sbuf.data, size);
 
     raid_error_t result = raid_socket_send(&cl->socket, data_size, sizeof(data_size));
     if (!result) {

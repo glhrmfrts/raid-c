@@ -57,6 +57,12 @@ typedef enum {
     RAID_MAP
 } raid_type_t;
 
+typedef enum { 
+    RAID_CALLBACK_BEFORE_SEND,
+    RAID_CALLBACK_AFTER_RECV,
+    RAID_CALLBACK_MSG_RECV,
+} raid_callback_type_t;
+
 typedef struct raid_socket {
     int handle;
     char* host;
@@ -70,9 +76,8 @@ typedef struct raid_reader {
     msgpack_object* header;
     msgpack_object* body;
     msgpack_object* nested;
-    msgpack_object* parent;
-    msgpack_object* parents[10];
-    int indices[10];
+    msgpack_object* parents[64];
+    int indices[64];
     int nested_top;
 } raid_reader_t;
 
@@ -82,9 +87,6 @@ typedef struct raid_writer {
     char* etag;
 } raid_writer_t;
 
-/**
- * A Raid request.
- */
 typedef enum raid_state {
     RAID_STATE_WAIT_MESSAGE,
     RAID_STATE_PROCESSING_MESSAGE,
@@ -95,18 +97,46 @@ struct raid_client;
 /**
  * The type of the request callback function.
  */
-typedef void(*raid_callback_t)(struct raid_client*, raid_reader_t*, raid_error_t, void*);
+typedef void(*raid_response_callback_t)(struct raid_client*, raid_reader_t*, raid_error_t, void*);
+
+/**
+ * Callback called before sending data to the server.
+ */
+typedef void(*raid_before_send_callback_t)(struct raid_client*, const char*, size_t, void*);
+
+/**
+ * Callback called after receiving data from the server.
+ */
+typedef void(*raid_after_recv_callback_t)(struct raid_client*, const char*, size_t, void*);
+
+/**
+ * Callback called after receiving a valid message from the server
+ * which is not a response to a previously made request.
+ */
+typedef void(*raid_msg_recv_callback_t)(struct raid_client*, raid_reader_t*, void*);
 
 /**
  * A Raid request.
  */
 typedef struct raid_request {
     char* etag;
-    raid_callback_t callback;
+    raid_response_callback_t callback;
     void* callback_user_data;
     struct raid_request* next;
     struct raid_request* prev;
 } raid_request_t;
+
+typedef struct raid_callback {
+    raid_callback_type_t type;
+    void* user_data;
+    union {
+        raid_before_send_callback_t before_send;
+        raid_after_recv_callback_t after_recv;
+        raid_msg_recv_callback_t msg_recv;
+    } callback;
+    struct raid_callback* next;
+    struct raid_callback* prev;
+} raid_callback_t;
 
 /**
  * The client state holding sockets, requests, etc...
@@ -120,6 +150,7 @@ typedef struct raid_client {
     size_t msg_len;
     raid_state_t state;
     raid_request_t* reqs;
+    raid_callback_t* callbacks;
     pthread_mutex_t reqs_mutex;
     pthread_t recv_thread;
 } raid_client_t;
@@ -134,7 +165,44 @@ typedef struct raid_client {
  */
 raid_error_t raid_connect(raid_client_t* cl, const char* host, const char* port);
 
+/**
+ * @brief Returns whether the client is connected or not.
+ * 
+ * @param cl Raid client instance.
+ * @return whether the client is connected or not.
+ */
 bool raid_connected(raid_client_t* cl);
+
+/**
+ * @brief Adds a "before_send" callback, which gets called before sending data to the server.
+ * 
+ * @param cl Raid client instance.
+ * @param cb Callback to be called.
+ * @param user_data Callback user data.
+ * @return Any errors that might occur.
+ */
+void raid_add_before_send_callback(raid_client_t* cl, raid_before_send_callback_t cb, void* user_data);
+
+/**
+ * @brief Adds a "after_recv" callback, which gets called after receiving data to the server.
+ * 
+ * @param cl Raid client instance.
+ * @param cb Callback to be called.
+ * @param user_data Callback user data.
+ * @return Any errors that might occur.
+ */
+void raid_add_after_recv_callback(raid_client_t* cl, raid_after_recv_callback_t cb, void* user_data);
+
+/**
+ * @brief Adds a "msg_recv" callback, which gets called after receiving a
+ * valid message from the server which is not a response to a previously made request.
+ * 
+ * @param cl Raid client instance.
+ * @param cb Callback to be called.
+ * @param user_data Callback user data.
+ * @return Any errors that might occur.
+ */
+void raid_add_msg_recv_callback(raid_client_t* cl, raid_msg_recv_callback_t cb, void* user_data);
 
 /**
  * @brief Send a request to the raid server.
@@ -145,7 +213,7 @@ bool raid_connected(raid_client_t* cl);
  * @param user_data Callback user data.
  * @return Any errors that might occur.
  */
-raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_callback_t cb, void* user_data);
+raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_response_callback_t cb, void* user_data);
 
 /**
  * @brief Send a request to the raid server and block until response is received.

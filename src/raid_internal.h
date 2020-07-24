@@ -4,6 +4,16 @@
 #include "raid.h"
 
 
+#define LIST_APPEND(list, item) \
+    if (list) { \
+        list->prev = item; \
+    } \
+    item->next = list; \
+    item->prev = NULL; \
+    list = item
+
+
+
 void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len, bool is_response);
 
 
