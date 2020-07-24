@@ -86,6 +86,13 @@ raid_error_t raid_write_message_without_body(raid_writer_t* w, const char* actio
     return raid_write_message_ex(w, action, false);
 }
 
+raid_error_t raid_write_nil(raid_writer_t* w)
+{
+    msgpack_packer* pk = &w->pk;
+    msgpack_pack_nil(pk);
+    return RAID_SUCCESS;
+}
+
 raid_error_t raid_write_int(raid_writer_t* w, int64_t n)
 {
     msgpack_packer* pk = &w->pk;

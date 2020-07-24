@@ -47,6 +47,16 @@ typedef enum {
     RAID_UNKNOWN,
 } raid_error_t;
 
+typedef enum {
+    RAID_INVALID,
+    RAID_NIL,
+    RAID_INT,
+    RAID_FLOAT,
+    RAID_STRING,
+    RAID_ARRAY,
+    RAID_MAP
+} raid_type_t;
+
 typedef struct raid_socket {
     int handle;
     char* host;
@@ -221,6 +231,14 @@ bool raid_read_code(raid_reader_t* r, char** res, size_t* len);
 bool raid_read_code_cstring(raid_reader_t* r, char** res);
 
 /**
+ * @brief Returns the type of the current value in the response message body.
+ * 
+ * @param r Raid client instance.
+ * @return The type of the value.
+ */
+raid_type_t raid_read_type(raid_reader_t* r);
+
+/**
  * @brief Reads an integer from the response message body.
  * 
  * @param r Raid client instance.
@@ -276,6 +294,16 @@ bool raid_copy_cstring(raid_reader_t* r, char* buf, size_t buf_len);
  * @return Whether the value could be read or not.
  */
 bool raid_read_map_key(raid_reader_t* r, char** key, size_t* len);
+
+/**
+ * @brief Reads the current map key null-terminated version.
+ * 
+ * @param r Raid client instance.
+ * @param key Pointer to receive string value.
+ * @param len Pointer to receive the length of the string.
+ * @return Whether the value could be read or not.
+ */
+bool raid_read_map_key_cstring(raid_reader_t* r, char** key);
 
 /**
  * @brief Compares the current map key.
@@ -357,6 +385,14 @@ raid_error_t raid_write_message(raid_writer_t* w, const char* action);
  * @return Any errors that might occur.
  */
 raid_error_t raid_write_message_without_body(raid_writer_t* w, const char* action);
+
+/**
+ * @brief Write nil in the request body.
+ * 
+ * @param w Raid client instance.
+ * @return Any errors that might occur.
+ */
+raid_error_t raid_write_nil(raid_writer_t* w);
 
 /**
  * @brief Write an integer in the request body.

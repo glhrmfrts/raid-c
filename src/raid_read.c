@@ -90,7 +90,6 @@ bool raid_read_code(raid_reader_t* r, char** res, size_t* len)
     return false;
 }
 
-
 bool raid_read_code_cstring(raid_reader_t* r, char** res)
 {
     if (!r->header) return false;
@@ -108,6 +107,37 @@ bool raid_read_code_cstring(raid_reader_t* r, char** res)
     return false;
 }
 
+raid_type_t raid_read_type(raid_reader_t* r)
+{
+    if (!r->nested) return RAID_INVALID;
+
+    switch (r->nested->type) {
+    case MSGPACK_OBJECT_NIL:
+        return RAID_NIL;
+
+    case MSGPACK_OBJECT_POSITIVE_INTEGER:
+    case MSGPACK_OBJECT_NEGATIVE_INTEGER:
+        return RAID_INT;
+
+    case MSGPACK_OBJECT_FLOAT:
+    case MSGPACK_OBJECT_FLOAT32:
+        return RAID_FLOAT;
+
+    case MSGPACK_OBJECT_STR:
+    case MSGPACK_OBJECT_BIN:
+        return RAID_STRING;
+
+    case MSGPACK_OBJECT_ARRAY:
+        return RAID_ARRAY;
+
+    case MSGPACK_OBJECT_MAP:
+        return RAID_MAP;
+
+    default:
+        return RAID_INVALID;
+    }
+}
+
 bool raid_read_int(raid_reader_t* r, int64_t* res)
 {
     if (!r->nested) return false;
@@ -123,7 +153,7 @@ bool raid_read_float(raid_reader_t* r, double* res)
 {
     if (!r->nested) return false;
 
-    if (r->nested->type != MSGPACK_OBJECT_FLOAT)
+    if (r->nested->type != MSGPACK_OBJECT_FLOAT && r->nested->type != MSGPACK_OBJECT_FLOAT32)
         return false;
 
     *res = r->nested->via.f64;
@@ -188,6 +218,22 @@ bool raid_read_map_key(raid_reader_t* r, char** key, size_t* len)
     *len = obj->via.str.size;
     *key = malloc(*len);
     memcpy(*key, ptr, *len);
+    return true;
+}
+
+bool raid_read_map_key_cstring(raid_reader_t* r, char** key)
+{
+    if (!r->nested) return false;
+
+    if (!r->parent || r->parent->type != MSGPACK_OBJECT_MAP)
+        return false;
+
+    msgpack_object* obj = &r->parent->via.map.ptr[r->indices[r->nested_top]].key;
+    const char* ptr = obj->via.str.ptr;
+    size_t size = obj->via.str.size;
+    *key = malloc(size+1);
+    memcpy(*key, ptr, size);
+    (*key)[size] = '\0';
     return true;
 }
 
