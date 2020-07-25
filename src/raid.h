@@ -454,6 +454,8 @@ raid_error_t raid_write_message(raid_writer_t* w, const char* action);
  */
 raid_error_t raid_write_message_without_body(raid_writer_t* w, const char* action);
 
+raid_error_t raid_write_object(raid_writer_t* w, const msgpack_object* obj);
+
 /**
  * @brief Write nil in the request body.
  * 

@@ -8,7 +8,7 @@ typedef struct {
     pthread_mutex_t mutex;
     bool done;
     raid_error_t err;
-    raid_reader_t* response_reader;
+    raid_writer_t response_writer;
 } request_sync_data_t;
 
 static void* raid_recv_loop(void* arg);
@@ -120,9 +120,6 @@ static int read_message(raid_client_t* cl)
         cl->state = RAID_STATE_PROCESSING_MESSAGE;
         cl->msg_total_size = len;
         cl->msg_len = 0;
-
-        //__android_log_print(ANDROID_LOG_DEBUG, "hcs-sdk-jni", "%u %u %u %u\n", (uint8_t)cl->in_ptr[0], (uint8_t)cl->in_ptr[1], (uint8_t)cl->in_ptr[2], (uint8_t)cl->in_ptr[3]);
-
         cl->msg_buf = malloc(cl->msg_total_size*sizeof(char));
         return 4;
     }
@@ -165,7 +162,9 @@ static void sync_request_callback(raid_client_t* cl, raid_reader_t* r, raid_erro
 {
     request_sync_data_t* data = (request_sync_data_t*)user_data;
     if (err == RAID_SUCCESS) {
-        raid_reader_swap(r, data->response_reader);
+        // To be safe, copy the data from the reader to our writer
+        // (just swapping the pointers from another thread gives scary results)
+        raid_write_object(&data->response_writer, r->obj);
     }
 
     data->err = err;
@@ -177,7 +176,7 @@ static void sync_request_callback(raid_client_t* cl, raid_reader_t* r, raid_erro
 
 raid_error_t raid_connect(raid_client_t* cl, const char* host, const char* port)
 {
-    cl->reqs = NULL;
+    memset(cl, 0, sizeof(raid_client_t));
     cl->state = RAID_STATE_WAIT_MESSAGE;
     raid_error_t err = raid_socket_connect(&cl->socket, host, port);
     if (err == RAID_SUCCESS) {
@@ -267,7 +266,7 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
 {
     request_sync_data_t* data = malloc(sizeof(request_sync_data_t));
     memset(data, 0, sizeof(request_sync_data_t));
-    data->response_reader = out;
+    raid_writer_init(&data->response_writer);
 
     int err = pthread_mutex_init(&data->mutex, NULL);
     if (err != 0) {
@@ -294,6 +293,9 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
 
     pthread_mutex_destroy(&data->mutex);
     pthread_cond_destroy(&data->cond_var);
+
+    raid_reader_set_data(out, data->response_writer.sbuf.data, data->response_writer.sbuf.size, true);
+    raid_writer_destroy(&data->response_writer);
 
     res = data->err;
     free(data);

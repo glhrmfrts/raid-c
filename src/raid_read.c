@@ -67,10 +67,13 @@ void raid_reader_destroy(raid_reader_t* r)
 
 void raid_reader_swap(raid_reader_t* from, raid_reader_t* to)
 {
-    raid_reader_t tmp;
-    memcpy(&tmp, from, sizeof(raid_reader_t));
-    memcpy(from, to, sizeof(raid_reader_t));
-    memcpy(to, &tmp, sizeof(raid_reader_t));
+    raid_reader_t tmp = *from;
+    *from = *to;
+    *to = tmp;
+
+    //memcpy(&tmp, from, sizeof(raid_reader_t));
+    //memcpy(from, to, sizeof(raid_reader_t));
+    //memcpy(to, &tmp, sizeof(raid_reader_t));
 }
 
 void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len, bool is_response)
