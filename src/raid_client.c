@@ -149,7 +149,7 @@ static void process_data(raid_client_t* cl, const char* buf, size_t buf_len)
     cl->in_end = buf + buf_len;
     while (cl->in_ptr < cl->in_end) {
         int i = read_message(cl);
-        if (i >= 0) {
+        if (i > 0) {
             cl->in_ptr += i;
         }
         else {
@@ -282,6 +282,8 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
     if (res != RAID_SUCCESS) {
         pthread_mutex_destroy(&data->mutex);
         pthread_cond_destroy(&data->cond_var);
+        raid_writer_destroy(&data->response_writer);
+        free(data);
         return res;
     }
 
