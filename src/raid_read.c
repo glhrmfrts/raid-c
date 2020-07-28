@@ -186,6 +186,20 @@ bool raid_read_float(raid_reader_t* r, double* res)
     return true;
 }
 
+bool raid_read_binary(raid_reader_t* r, char** res, size_t* len)
+{
+    if (!r->nested) return false;
+
+    if (r->nested->type != MSGPACK_OBJECT_BIN)
+        return false;
+
+    const char* ptr = r->nested->via.bin.ptr;
+    *len = r->nested->via.bin.size;
+    *res = malloc(*len);
+    memcpy(*res, ptr, *len);
+    return true;
+}
+
 bool raid_read_string(raid_reader_t* r, char** res, size_t* len)
 {
     if (!r->nested) return false;

@@ -53,6 +53,7 @@ typedef enum {
     RAID_INT,
     RAID_FLOAT,
     RAID_STRING,
+    RAID_BINARY,
     RAID_ARRAY,
     RAID_MAP
 } raid_type_t;
@@ -325,6 +326,16 @@ bool raid_read_int(raid_reader_t* r, int64_t* res);
 bool raid_read_float(raid_reader_t* r, double* res);
 
 /**
+ * @brief Reads a binary array from the response message body.
+ * 
+ * @param r Raid client instance.
+ * @param res Pointer to receive data.
+ * @param len Pointer to receive the length of the array.
+ * @return Whether the value could be read or not.
+ */
+bool raid_read_binary(raid_reader_t* r, char** res, size_t* len);
+
+/**
  * @brief Reads a string from the response message body.
  * 
  * @param r Raid client instance.
@@ -481,6 +492,16 @@ raid_error_t raid_write_int(raid_writer_t* w, int64_t n);
  * @return Any errors that might occur.
  */
 raid_error_t raid_write_float(raid_writer_t* w, double n);
+
+/**
+ * @brief Write a binary array in the request body.
+ * 
+ * @param w Raid client instance.
+ * @param str Array data.
+ * @param len Array size.
+ * @return Any errors that might occur.
+ */
+raid_error_t raid_write_binary(raid_writer_t* w, const char* data, size_t len);
 
 /**
  * @brief Write a string in the request body.

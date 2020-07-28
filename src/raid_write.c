@@ -107,6 +107,14 @@ raid_error_t raid_write_float(raid_writer_t* w, double n)
     return RAID_SUCCESS;
 }
 
+raid_error_t raid_write_binary(raid_writer_t* w, const char* data, size_t len)
+{
+    msgpack_packer* pk = &w->pk;
+    msgpack_pack_bin(pk, len);
+    msgpack_pack_bin_body(pk, data, len);
+    return RAID_SUCCESS;
+}
+
 raid_error_t raid_write_string(raid_writer_t* w, const char* str, size_t len)
 {
     msgpack_packer* pk = &w->pk;

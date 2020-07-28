@@ -296,10 +296,12 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
     pthread_mutex_destroy(&data->mutex);
     pthread_cond_destroy(&data->cond_var);
 
-    raid_reader_set_data(out, data->response_writer.sbuf.data, data->response_writer.sbuf.size, true);
-    raid_writer_destroy(&data->response_writer);
-
     res = data->err;
+    if (res == RAID_SUCCESS) {
+        raid_reader_set_data(out, data->response_writer.sbuf.data, data->response_writer.sbuf.size, true);
+    }
+    
+    raid_writer_destroy(&data->response_writer);
     free(data);
 
     return res;
