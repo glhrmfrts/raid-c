@@ -4,14 +4,24 @@
 #include "raid.h"
 
 
-#define LIST_APPEND(list, item) \
-    if (list) { \
-        list->prev = item; \
+#define LIST_APPEND(head, item) \
+    if (head) { \
+        head->prev = item; \
     } \
-    item->next = list; \
+    item->next = head; \
     item->prev = NULL; \
-    list = item
+    head = item
 
+#define LIST_REMOVE(head, item) \
+    if (item == head) { \
+        head = item->next; \
+    } \
+    if (item->prev) { \
+        item->prev->next = item->next; \
+    } \
+    if (item->next) { \
+        item->next->prev = item->prev; \
+    }
 
 
 void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len, bool is_response);

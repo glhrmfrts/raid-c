@@ -2,6 +2,9 @@
 #include <ctype.h>
 #include "raid.h"
 #include "raid_internal.h"
+#include <android/log.h>
+
+#define RAID_TIMEOUT_DEFAULT_SECS (10)
 
 typedef struct {
     pthread_cond_t cond_var;
@@ -17,9 +20,22 @@ static void debug_etags(raid_client_t* cl)
 {
     raid_request_t* req = cl->reqs;
     while (req) {
-        printf("etag: %s\n", req->etag);
+        __android_log_print(ANDROID_LOG_ERROR, "hcs-sdk-jni", "ETAG: %s\n", req->etag);
         req = req->next;
     }
+}
+
+static int debug_count_requests(raid_client_t* cl, const char* etag)
+{
+    int i = 0;
+    raid_request_t* req = cl->reqs;
+    while (req) {
+        if (!strncmp(req->etag, etag, strlen(req->etag))) {
+            i++;
+        }
+        req = req->next;
+    }
+    return i;
 }
 
 static void call_before_send_callbacks(raid_client_t* cl, const char* data, size_t data_len)
@@ -70,31 +86,28 @@ static raid_request_t* find_request(raid_client_t* cl, const char* etag)
 static void reply_request(raid_client_t* cl, raid_reader_t* r)
 {
     // Find the request to reply to.
-    raid_request_t* req = find_request(cl, r->etag_obj->via.str.ptr);
-    if (!req) {
-        call_msg_recv_callbacks(cl, r);
-        return;
-    }
-
-    // Fire the request callback.
-    req->callback(cl, r, RAID_SUCCESS, req->callback_user_data);
-
-    // Remove from list.
     pthread_mutex_lock(&cl->reqs_mutex);
-
-    if (req == cl->reqs) {
-        cl->reqs = req->next;
+    raid_request_t* req = find_request(cl, r->etag_obj->via.str.ptr);
+    int reqcount = debug_count_requests(cl, r->etag_obj->via.str.ptr);
+    if (reqcount > 1) {
+        __android_log_print(ANDROID_LOG_DEBUG, "etag-count", "count: %d\n", reqcount);
     }
-    if (req->prev) {
-        req->prev->next = req->next;
-    }
-    if (req->next) {
-        req->next->prev = req->prev;
-    }
-    free(req->etag);
-    free(req);
-
     pthread_mutex_unlock(&cl->reqs_mutex);
+
+    if (!req) {
+        __android_log_print(ANDROID_LOG_ERROR, "etag-not-found", "%s", r->etag_obj->via.str.ptr);
+        call_msg_recv_callbacks(cl, r);
+    }
+    else {
+        // Fire the request callback.
+        req->callback(cl, r, RAID_SUCCESS, req->callback_user_data);
+
+        pthread_mutex_lock(&cl->reqs_mutex);
+        LIST_REMOVE(cl->reqs, req);
+        free(req->etag);
+        free(req);
+        pthread_mutex_unlock(&cl->reqs_mutex);
+    }
 }
 
 static void parse_response(raid_client_t* cl)
@@ -125,18 +138,26 @@ static int read_message(raid_client_t* cl)
     }
 
     case RAID_STATE_PROCESSING_MESSAGE: {
-        size_t copy_len = cl->in_end - cl->in_ptr;
+        size_t buf_left = (size_t)(cl->in_end - cl->in_ptr);
+        size_t copy_len = (cl->msg_total_size - cl->msg_len);
+        if (buf_left < copy_len) {
+            copy_len = buf_left;
+        }
+
+        __android_log_print(ANDROID_LOG_DEBUG, "raw-data-copy", "%d\n", copy_len);
+
         memcpy(cl->msg_buf + cl->msg_len, cl->in_ptr, copy_len);
         cl->msg_len += copy_len;
 
         if (cl->msg_len >= cl->msg_total_size) {
+            __android_log_print(ANDROID_LOG_DEBUG, "raw-data-parsed", "%d\n", cl->msg_len);
             call_after_recv_callbacks(cl, cl->msg_buf, cl->msg_len);
             parse_response(cl);
             free(cl->msg_buf);
             cl->msg_buf = NULL;
             cl->state = RAID_STATE_WAIT_MESSAGE;
         }
-        return cl->in_end - cl->in_ptr;
+        return copy_len;
     }
     }
 
@@ -174,20 +195,33 @@ static void sync_request_callback(raid_client_t* cl, raid_reader_t* r, raid_erro
     pthread_mutex_unlock(&data->mutex);
 }
 
-raid_error_t raid_connect(raid_client_t* cl, const char* host, const char* port)
+raid_error_t raid_init(raid_client_t* cl, const char* host, const char* port)
 {
+    if (!host || !port)
+        return RAID_INVALID_ARGUMENT;
+
     memset(cl, 0, sizeof(raid_client_t));
     cl->state = RAID_STATE_WAIT_MESSAGE;
-    raid_error_t err = raid_socket_connect(&cl->socket, host, port);
+    cl->host = strdup(host);
+    cl->port = strdup(port);
+    cl->socket.handle = -1;
+
+    int err = pthread_mutex_init(&cl->reqs_mutex, NULL);
+    if (err != 0) {
+        fprintf(stderr, "Cannot create mutex: %s\n", strerror(err));
+        return RAID_UNKNOWN;
+    }
+    return RAID_SUCCESS;
+}
+
+raid_error_t raid_connect(raid_client_t* cl)
+{
+    raid_error_t err = raid_socket_connect(&cl->socket, cl->host, cl->port);
     if (err == RAID_SUCCESS) {
         int res = pthread_create(&cl->recv_thread, NULL, &raid_recv_loop, (void*)cl);
         if (res != 0) {
             fprintf(stderr, "Cannot create thread: %s\n", strerror(res));
-        }
-
-        res = pthread_mutex_init(&cl->reqs_mutex, NULL);
-        if (res != 0) {
-            fprintf(stderr, "Cannot create mutex: %s\n", strerror(res));
+            return RAID_UNKNOWN;
         }
     }
     return err;
@@ -232,15 +266,12 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
     // Append a request to the list
     raid_request_t* req = malloc(sizeof(raid_request_t));
     memset(req, 0, sizeof(raid_request_t));
+    req->created_at = (int64_t)time(NULL);
+    req->timeout_secs = RAID_TIMEOUT_DEFAULT_SECS;
     req->etag = strdup(w->etag);
     req->callback = cb;
     req->callback_user_data = user_data;
-    if (cl->reqs) {
-        cl->reqs->prev = req;
-    }
-    req->next = cl->reqs;
-    req->prev = NULL;
-    cl->reqs = req;
+    LIST_APPEND(cl->reqs, req);
     
     // Send data to socket
     int32_t size = w->sbuf.size;
@@ -257,6 +288,8 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
         result = raid_socket_send(&cl->socket, w->sbuf.data, size);
     }
 
+    debug_etags(cl);
+
     pthread_mutex_unlock(&cl->reqs_mutex);
 
     return result;
@@ -266,7 +299,7 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
 {
     request_sync_data_t* data = malloc(sizeof(request_sync_data_t));
     memset(data, 0, sizeof(request_sync_data_t));
-    raid_writer_init(&data->response_writer);
+    raid_writer_init(&data->response_writer, cl);
 
     int err = pthread_mutex_init(&data->mutex, NULL);
     if (err != 0) {
@@ -307,12 +340,50 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
     return res;
 }
 
-raid_error_t raid_close(raid_client_t* cl)
+raid_error_t raid_disconnect(raid_client_t* cl)
 {
+    raid_request_t* req = cl->reqs;
+    while (req) {
+        req->callback(cl, NULL, RAID_NOT_CONNECTED, req->callback_user_data);
+
+        raid_request_t* swap = req;
+        req = req->next;
+        free(swap->etag);
+        free(swap);
+    }
+    cl->reqs = NULL;
+
     raid_error_t err = raid_socket_close(&cl->socket);
     pthread_join(cl->recv_thread, NULL);
-    pthread_mutex_destroy(&cl->reqs_mutex);
     return err;
+}
+
+void raid_destroy(raid_client_t* cl)
+{
+    pthread_mutex_destroy(&cl->reqs_mutex);
+}
+
+static void check_requests_for_timeout(raid_client_t* cl, raid_error_t recv_err)
+{
+    pthread_mutex_lock(&cl->reqs_mutex);
+
+    int64_t now_time = (int64_t)time(NULL);
+    raid_request_t* req = cl->reqs;
+    while (req) {
+        raid_request_t* next_req = req->next;
+        bool should_remove = (recv_err == RAID_NOT_CONNECTED) || ((now_time - req->created_at) > req->timeout_secs);
+        if (should_remove) {
+            req->callback(cl, NULL, recv_err, req->callback_user_data);
+
+            LIST_REMOVE(cl->reqs, req);
+            free(req->etag);
+            free(req);
+        }
+
+        req = next_req;
+    }
+
+    pthread_mutex_unlock(&cl->reqs_mutex);
 }
 
 static void* raid_recv_loop(void* arg)
@@ -327,24 +398,44 @@ static void* raid_recv_loop(void* arg)
         }
 
         raid_error_t err = raid_socket_recv(&cl->socket, buf, sizeof(buf), &buf_len);
-        if (err) {
-            fprintf(stderr, "[raid] recv error: %s\n", raid_error_to_string(err));
-            if (err == RAID_NOT_CONNECTED || err == RAID_RECV_TIMEOUT) {
-                raid_request_t* req = cl->reqs;
-                while (req) {
-                    req->callback(cl, NULL, err, req->callback_user_data);
 
-                    raid_request_t* swap = req;
-                    req = req->next;
-                    free(swap->etag);
-                    free(swap);
+        if (false) {
+            static const int BUF_SIZE = 10000;
+
+            FILE* fh = fopen("/dev/null", "w");
+            //if (!fh) return ;
+
+            char* fbuf = malloc(BUF_SIZE);
+            memset(fbuf, 0, BUF_SIZE);
+            setbuf(fh, fbuf);
+
+            for (size_t i = 0; i < buf_len; i++) {
+                if (buf[i] == 0) {
+                    fputs("<<ZERO>>", fh);
                 }
-                cl->reqs = NULL;
+                else {
+                    fputc(buf[i], fh);
+                }
             }
+            fputc(0, fh);
+
+            __android_log_print(ANDROID_LOG_DEBUG, "raw-data", "%s\n", fbuf);
+
+            fclose(fh);
+            free(fbuf);
         }
-        else {
+
+        if (err) {
+            __android_log_print(ANDROID_LOG_DEBUG, "raw-data-err", "%s\n", raid_error_to_string(err));
+            fprintf(stderr, "[raid] recv error: %s\n", raid_error_to_string(err));
+        }
+
+        if (buf_len > 0) {
             process_data(cl, buf, buf_len);
         }
+        buf_len = 0;
+
+        check_requests_for_timeout(cl, err);
     }
 
     return NULL;

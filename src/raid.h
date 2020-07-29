@@ -10,7 +10,7 @@
  *  raid_error_t err = raid_connect(&client, "host", "port");
  *
  *  raid_writer_t w;
- *  raid_writer_init(&w);
+ *  raid_writer_init(&w, &hcs->raid);
  *  raid_write_message(&w, "api.action");
  *  raid_write_mapf(&w, 2, "'somenumber' %d 'somestr' %s", 42, "mystring");
  *  raid_request_async(&client, &w, response_callback, NULL); // Async request
@@ -33,6 +33,8 @@
 
 #include <pthread.h>
 #include <msgpack.h>
+
+struct raid_client;
 
 typedef enum {
     RAID_SUCCESS,
@@ -66,11 +68,11 @@ typedef enum {
 
 typedef struct raid_socket {
     int handle;
-    char* host;
-    char* port;
 } raid_socket_t;
 
 typedef struct raid_reader {
+    char* src_data; // owns
+    size_t src_data_len;
     msgpack_zone* mempool; // owns
     msgpack_object* obj; // owns
     msgpack_object* etag_obj;
@@ -86,14 +88,13 @@ typedef struct raid_writer {
     msgpack_sbuffer sbuf;
     msgpack_packer pk;
     char* etag;
+    struct raid_client* cl;
 } raid_writer_t;
 
 typedef enum raid_state {
     RAID_STATE_WAIT_MESSAGE,
     RAID_STATE_PROCESSING_MESSAGE,
 } raid_state_t;
-
-struct raid_client;
 
 /**
  * The type of the request callback function.
@@ -120,6 +121,8 @@ typedef void(*raid_msg_recv_callback_t)(struct raid_client*, raid_reader_t*, voi
  * A Raid request.
  */
 typedef struct raid_request {
+    int64_t created_at;
+    int64_t timeout_secs;
     char* etag;
     raid_response_callback_t callback;
     void* callback_user_data;
@@ -144,6 +147,8 @@ typedef struct raid_callback {
  */
 typedef struct raid_client {
     raid_socket_t socket;
+    char* host;
+    char* port;
     const char* in_ptr;
     const char* in_end;
     char* msg_buf;
@@ -157,14 +162,22 @@ typedef struct raid_client {
 } raid_client_t;
 
 /**
- * @brief Connect to the given host and port.
+ * @brief Configure the client's host and port.
  * 
  * @param cl Raid client instance.
  * @param host Hostname to connect.
  * @param port Port to connect in the host.
  * @return Any errors that might occur.
  */
-raid_error_t raid_connect(raid_client_t* cl, const char* host, const char* port);
+raid_error_t raid_init(raid_client_t* cl, const char* host, const char* port);
+
+/**
+ * @brief Connect to the client's host and port.
+ *
+ * @param cl Raid client instance.
+ * @return Any errors that might occur.
+ */
+raid_error_t raid_connect(raid_client_t* cl);
 
 /**
  * @brief Returns whether the client is connected or not.
@@ -232,7 +245,14 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
  * @param cl Raid client instance.
  * @return Any errors that might occur.
  */
-raid_error_t raid_close(raid_client_t* cl);
+raid_error_t raid_disconnect(raid_client_t* cl);
+
+/**
+ * @brief Destroy the client instance and it's resources.
+ *
+ * @param cl Raid client instance.
+ */
+void raid_destroy(raid_client_t* cl);
 
 /**
  * @brief Generates an etag (random string), the caller owns the string.
@@ -298,6 +318,8 @@ bool raid_read_code(raid_reader_t* r, char** res, size_t* len);
  * @return Whether the code could be read or not.
  */
 bool raid_read_code_cstring(raid_reader_t* r, char** res);
+
+bool raid_read_etag_cstring(raid_reader_t* r, char** res);
 
 /**
  * @brief Returns the type of the current value in the response message body.
@@ -438,7 +460,7 @@ bool raid_read_next(raid_reader_t* r);
  * 
  * @param w Writer instance.
  */
-void raid_writer_init(raid_writer_t* w);
+void raid_writer_init(raid_writer_t* w, raid_client_t* cl);
 
 /**
  * @brief Destroy the writer state.

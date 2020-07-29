@@ -111,7 +111,7 @@ static raid_error_t socket_impl_disconnect(raid_socket_t* s)
 
 #else
 
-static raid_error_t socket_impl_connect(raid_socket_t* s)
+static raid_error_t socket_impl_connect(raid_socket_t* s, const char* host, const char* port)
 {
     int ret = 0;
 
@@ -122,7 +122,7 @@ static raid_error_t socket_impl_connect(raid_socket_t* s)
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
 
-    ret = getaddrinfo(s->host, s->port, &hints, &addr_info);
+    ret = getaddrinfo(host, port, &hints, &addr_info);
     if (ret != 0) {
         fprintf(stderr, "getaddrinfo failed with error: %d\n", ret);
         return RAID_INVALID_ADDRESS;
@@ -139,7 +139,7 @@ static raid_error_t socket_impl_connect(raid_socket_t* s)
     struct sockaddr* server_addr = addr_info->ai_addr;
     ret = connect((int)s->handle, server_addr, sizeof(struct sockaddr));
     if (ret == -1) {
-        fprintf(stderr, "error connecting to: %s\n", s->host);
+        fprintf(stderr, "error connecting to: %s\n", host);
         freeaddrinfo(addr_info);
         return RAID_CONNECT_ERROR;
     }
@@ -171,6 +171,9 @@ static raid_error_t socket_impl_recv(raid_socket_t* s, char* buf, size_t buf_len
     if (errno == EWOULDBLOCK || errno == EAGAIN) {
         return RAID_RECV_TIMEOUT;
     }
+    if (errno == ECONNREFUSED || errno == ENOTCONN || errno == ENOTSOCK || errno == EBADF) {
+        return RAID_NOT_CONNECTED;
+    }
     if (*out_len < 0) {
         fprintf(stderr, "recv failed with error: %d\n", errno);
         return RAID_UNKNOWN;
@@ -200,9 +203,7 @@ static raid_error_t socket_impl_disconnect(raid_socket_t* s)
 
 raid_error_t raid_socket_connect(raid_socket_t* s, const char* host, const char* port)
 {
-    s->host = strdup(host);
-    s->port = strdup(port);
-    return socket_impl_connect(s);
+    return socket_impl_connect(s, host, port);
 }
 
 bool raid_socket_connected(raid_socket_t* s)
@@ -223,7 +224,5 @@ raid_error_t raid_socket_recv(raid_socket_t* s, char* buf, size_t buf_len, int* 
 raid_error_t raid_socket_close(raid_socket_t* s)
 {
     raid_error_t err = socket_impl_disconnect(s);
-    free(s->host);
-    free(s->port);
     return err;
 }

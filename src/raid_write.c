@@ -4,6 +4,7 @@
 #include <time.h>
 #include "raid.h"
 #include "raid_internal.h"
+#include <android/log.h>
 
 #define RAID_KEY_HEADER "header"
 #define RAID_KEY_ACTION "action"
@@ -31,7 +32,11 @@ static raid_error_t raid_write_message_ex(raid_writer_t* w, const char* action, 
         if (w->etag) {
             free(w->etag);
         }
+        
+        pthread_mutex_lock(&w->cl->reqs_mutex);
         w->etag = raid_gen_etag();
+        pthread_mutex_unlock(&w->cl->reqs_mutex);
+
         msgpack_pack_str_with_body(pk, RAID_KEY_ACTION, sizeof(RAID_KEY_ACTION) - 1);
         msgpack_pack_str_with_body(pk, action, strlen(action));
         msgpack_pack_str_with_body(pk, RAID_KEY_ETAG, sizeof(RAID_KEY_ETAG) - 1);
@@ -47,9 +52,10 @@ static raid_error_t raid_write_message_ex(raid_writer_t* w, const char* action, 
 
 char* raid_gen_etag()
 {
-    static const char ucase[] = "ncdhnwydfusigcfusgcfcsgrfAJSGDIAJSHDLQUWHDKAJHD";
+    static const char ucase[] = "qwertyuiopasdfghjklzxcvbnmMNBVCXZLKJHGFDSAPOIUYTREWQ1234567890";
     static char buf[9];
     static int64_t cnt;
+    __android_log_print(ANDROID_LOG_DEBUG, "gen-etag", "counter: %ld\n", cnt);
     srand(time(NULL)+(cnt++)*3);
 
     const size_t ucase_count = sizeof(ucase) - 1;
@@ -64,9 +70,10 @@ char* raid_gen_etag()
     return strdup(buf);
 }
 
-void raid_writer_init(raid_writer_t* w)
+void raid_writer_init(raid_writer_t* w, raid_client_t* cl)
 {
     memset(w, 0, sizeof(raid_writer_t));
+    w->cl = cl;
     msgpack_sbuffer_init(&w->sbuf);
     msgpack_packer_init(&w->pk, &w->sbuf, msgpack_sbuffer_write);
 }

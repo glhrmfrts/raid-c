@@ -45,7 +45,7 @@ void raid_reader_init(raid_reader_t* r)
 
     r->mempool = malloc(sizeof(msgpack_zone));
     r->obj = malloc(sizeof(msgpack_object));
-    msgpack_zone_init(r->mempool, 2048);
+    msgpack_zone_init(r->mempool, 4096);
 }
 
 void raid_reader_init_with_data(raid_reader_t* r, const char* data, size_t data_len)
@@ -63,6 +63,9 @@ void raid_reader_destroy(raid_reader_t* r)
     if (r->obj != NULL) {
         free(r->obj);
     }
+    if (r->src_data) {
+        free(r->src_data);
+    }
 }
 
 void raid_reader_swap(raid_reader_t* from, raid_reader_t* to)
@@ -74,7 +77,13 @@ void raid_reader_swap(raid_reader_t* from, raid_reader_t* to)
 
 void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len, bool is_response)
 {
-    msgpack_unpack(data, data_len, NULL, r->mempool, r->obj);
+    // Copy the data because msgpack likes to hold pointers to our memory!!!!1
+    r->src_data = malloc(sizeof(char)*data_len);
+    r->src_data_len = data_len;
+    memcpy(r->src_data, data, data_len);
+
+    msgpack_zone_clear(r->mempool);
+    msgpack_unpack(r->src_data, r->src_data_len, NULL, r->mempool, r->obj);
     if (is_response) {
         r->body = r->nested = find_obj(r->obj, "body");
         r->header = find_obj(r->obj, "header");
@@ -131,6 +140,18 @@ bool raid_read_code_cstring(raid_reader_t* r, char** res)
         }
     }
     return false;
+}
+
+bool raid_read_etag_cstring(raid_reader_t* r, char** res)
+{
+    if (!r->etag_obj) return false;
+
+    const char* ptr = r->etag_obj->via.str.ptr;
+    size_t size = r->etag_obj->via.str.size;
+    *res = malloc(size+1);
+    memcpy(*res, ptr, size);
+    (*res)[size] = '\0';
+    return true;
 }
 
 raid_type_t raid_read_type(raid_reader_t* r)

@@ -30,7 +30,7 @@ int main(int argc, char** argv)
     }
 
     raid_writer_t w;
-    raid_writer_init(&w);
+    raid_writer_init(&w, &hcs->raid);
 
     {
         // Test async request
