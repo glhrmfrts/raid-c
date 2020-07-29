@@ -154,6 +154,7 @@ typedef struct raid_client {
     char* msg_buf;
     size_t msg_total_size;
     size_t msg_len;
+    size_t etag_gen_cnt;
     raid_state_t state;
     raid_request_t* reqs;
     raid_callback_t* callbacks;
@@ -259,7 +260,7 @@ void raid_destroy(raid_client_t* cl);
  * 
  * @return Any errors that might occur.
  */
-char* raid_gen_etag();
+char* raid_gen_etag(raid_client_t* cl);
 
 /**
  * @brief Initialize the reader state.

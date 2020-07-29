@@ -20,7 +20,7 @@ static void debug_etags(raid_client_t* cl)
 {
     raid_request_t* req = cl->reqs;
     while (req) {
-        __android_log_print(ANDROID_LOG_ERROR, "hcs-sdk-jni", "ETAG: %s\n", req->etag);
+        printf("ETAG: %s\n", req->etag);
         req = req->next;
     }
 }
@@ -88,14 +88,9 @@ static void reply_request(raid_client_t* cl, raid_reader_t* r)
     // Find the request to reply to.
     pthread_mutex_lock(&cl->reqs_mutex);
     raid_request_t* req = find_request(cl, r->etag_obj->via.str.ptr);
-    int reqcount = debug_count_requests(cl, r->etag_obj->via.str.ptr);
-    if (reqcount > 1) {
-        __android_log_print(ANDROID_LOG_DEBUG, "etag-count", "count: %d\n", reqcount);
-    }
     pthread_mutex_unlock(&cl->reqs_mutex);
 
     if (!req) {
-        __android_log_print(ANDROID_LOG_ERROR, "etag-not-found", "%s", r->etag_obj->via.str.ptr);
         call_msg_recv_callbacks(cl, r);
     }
     else {
@@ -144,13 +139,10 @@ static int read_message(raid_client_t* cl)
             copy_len = buf_left;
         }
 
-        __android_log_print(ANDROID_LOG_DEBUG, "raw-data-copy", "%d\n", copy_len);
-
         memcpy(cl->msg_buf + cl->msg_len, cl->in_ptr, copy_len);
         cl->msg_len += copy_len;
 
         if (cl->msg_len >= cl->msg_total_size) {
-            __android_log_print(ANDROID_LOG_DEBUG, "raw-data-parsed", "%d\n", cl->msg_len);
             call_after_recv_callbacks(cl, cl->msg_buf, cl->msg_len);
             parse_response(cl);
             free(cl->msg_buf);
@@ -398,35 +390,7 @@ static void* raid_recv_loop(void* arg)
         }
 
         raid_error_t err = raid_socket_recv(&cl->socket, buf, sizeof(buf), &buf_len);
-
-        if (false) {
-            static const int BUF_SIZE = 10000;
-
-            FILE* fh = fopen("/dev/null", "w");
-            //if (!fh) return ;
-
-            char* fbuf = malloc(BUF_SIZE);
-            memset(fbuf, 0, BUF_SIZE);
-            setbuf(fh, fbuf);
-
-            for (size_t i = 0; i < buf_len; i++) {
-                if (buf[i] == 0) {
-                    fputs("<<ZERO>>", fh);
-                }
-                else {
-                    fputc(buf[i], fh);
-                }
-            }
-            fputc(0, fh);
-
-            __android_log_print(ANDROID_LOG_DEBUG, "raw-data", "%s\n", fbuf);
-
-            fclose(fh);
-            free(fbuf);
-        }
-
         if (err) {
-            __android_log_print(ANDROID_LOG_DEBUG, "raw-data-err", "%s\n", raid_error_to_string(err));
             fprintf(stderr, "[raid] recv error: %s\n", raid_error_to_string(err));
         }
 

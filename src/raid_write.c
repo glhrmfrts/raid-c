@@ -11,6 +11,8 @@
 #define RAID_KEY_ETAG "etag"
 #define RAID_KEY_BODY "body"
 
+#define RAID_ETAG_SIZE 8
+
 static void msgpack_pack_str_with_body(msgpack_packer* pk, const char* str, size_t len)
 {
     msgpack_pack_str(pk, len);
@@ -34,7 +36,7 @@ static raid_error_t raid_write_message_ex(raid_writer_t* w, const char* action, 
         }
         
         pthread_mutex_lock(&w->cl->reqs_mutex);
-        w->etag = raid_gen_etag();
+        w->etag = raid_gen_etag(w->cl);
         pthread_mutex_unlock(&w->cl->reqs_mutex);
 
         msgpack_pack_str_with_body(pk, RAID_KEY_ACTION, sizeof(RAID_KEY_ACTION) - 1);
@@ -50,24 +52,22 @@ static raid_error_t raid_write_message_ex(raid_writer_t* w, const char* action, 
     return RAID_SUCCESS;
 }
 
-char* raid_gen_etag()
+char* raid_gen_etag(raid_client_t* cl)
 {
     static const char ucase[] = "qwertyuiopasdfghjklzxcvbnmMNBVCXZLKJHGFDSAPOIUYTREWQ1234567890";
-    static char buf[9];
-    static int64_t cnt;
-    __android_log_print(ANDROID_LOG_DEBUG, "gen-etag", "counter: %ld\n", cnt);
-    srand(time(NULL)+(cnt++)*3);
+    srand(time(NULL)+(cl->etag_gen_cnt++)*3);
 
+    char* buf = malloc(sizeof(char)*(RAID_ETAG_SIZE + 1));
     const size_t ucase_count = sizeof(ucase) - 1;
-    for (int i = 0; i < sizeof(buf)-1; i++) {
+    for (int i = 0; i < RAID_ETAG_SIZE; i++) {
         char random_char;
         int random_index = (double)rand() / RAND_MAX * ucase_count;
         random_char = ucase[random_index];
         buf[i] = random_char;
     }
-    buf[8] = '\0';
+    buf[RAID_ETAG_SIZE] = '\0';
 
-    return strdup(buf);
+    return buf;
 }
 
 void raid_writer_init(raid_writer_t* w, raid_client_t* cl)
