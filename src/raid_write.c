@@ -4,7 +4,6 @@
 #include <time.h>
 #include "raid.h"
 #include "raid_internal.h"
-#include <android/log.h>
 
 #define RAID_KEY_HEADER "header"
 #define RAID_KEY_ACTION "action"

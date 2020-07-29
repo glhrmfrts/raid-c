@@ -2,7 +2,6 @@
 #include <ctype.h>
 #include "raid.h"
 #include "raid_internal.h"
-#include <android/log.h>
 
 #define RAID_TIMEOUT_DEFAULT_SECS (10)
 
