@@ -79,6 +79,9 @@ void raid_writer_init(raid_writer_t* w, raid_client_t* cl)
 
 void raid_writer_destroy(raid_writer_t* w)
 {
+    if (w->etag) {
+        free(w->etag);
+    }
     msgpack_sbuffer_destroy(&w->sbuf);
 }
 

@@ -150,9 +150,10 @@ static int read_message(raid_client_t* cl)
         }
         return copy_len;
     }
-    }
 
-    return -1;
+    default:
+        return -1;
+    }
 }
 
 static void process_data(raid_client_t* cl, const char* buf, size_t buf_len)
@@ -184,6 +185,31 @@ static void sync_request_callback(raid_client_t* cl, raid_reader_t* r, raid_erro
     data->done = true;
     pthread_cond_signal(&data->cond_var);
     pthread_mutex_unlock(&data->mutex);
+}
+
+static raid_error_t request_sync_init(request_sync_data_t* data, raid_client_t* cl)
+{
+    memset(data, 0, sizeof(request_sync_data_t));
+    raid_writer_init(&data->response_writer, cl);
+
+    int err = pthread_mutex_init(&data->mutex, NULL);
+    if (err != 0) {
+        return RAID_UNKNOWN;
+    }
+
+    err = pthread_cond_init(&data->cond_var, NULL);
+    if (err != 0) {
+        return RAID_UNKNOWN;
+    }
+
+    return RAID_SUCCESS;
+}
+
+static void request_sync_destroy(request_sync_data_t* data)
+{
+    pthread_mutex_destroy(&data->mutex);
+    pthread_cond_destroy(&data->cond_var);
+    raid_writer_destroy(&data->response_writer);
 }
 
 raid_error_t raid_init(raid_client_t* cl, const char* host, const char* port)
@@ -289,24 +315,15 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
 raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader_t* out)
 {
     request_sync_data_t* data = malloc(sizeof(request_sync_data_t));
-    memset(data, 0, sizeof(request_sync_data_t));
-    raid_writer_init(&data->response_writer, cl);
-
-    int err = pthread_mutex_init(&data->mutex, NULL);
-    if (err != 0) {
-        return RAID_UNKNOWN;
-    }
-
-    err = pthread_cond_init(&data->cond_var, NULL);
-    if (err != 0) {
-        return RAID_UNKNOWN;
-    }
-
-    raid_error_t res = raid_request_async(cl, w, sync_request_callback, (void*)data);
+    raid_error_t res = request_sync_init(data, cl);
     if (res != RAID_SUCCESS) {
-        pthread_mutex_destroy(&data->mutex);
-        pthread_cond_destroy(&data->cond_var);
-        raid_writer_destroy(&data->response_writer);
+        request_sync_destroy(data);
+        return res;
+    }
+
+    res = raid_request_async(cl, w, sync_request_callback, (void*)data);
+    if (res != RAID_SUCCESS) {
+        request_sync_destroy(data);
         free(data);
         return res;
     }
@@ -317,17 +334,13 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
     }
     pthread_mutex_unlock(&data->mutex);
 
-    pthread_mutex_destroy(&data->mutex);
-    pthread_cond_destroy(&data->cond_var);
-
     res = data->err;
     if (res == RAID_SUCCESS) {
         raid_reader_set_data(out, data->response_writer.sbuf.data, data->response_writer.sbuf.size, true);
     }
     
-    raid_writer_destroy(&data->response_writer);
+    request_sync_destroy(data);
     free(data);
-
     return res;
 }
 
