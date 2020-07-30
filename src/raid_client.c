@@ -318,6 +318,7 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
     raid_error_t res = request_sync_init(data, cl);
     if (res != RAID_SUCCESS) {
         request_sync_destroy(data);
+        free(data);
         return res;
     }
 
