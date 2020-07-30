@@ -364,6 +364,12 @@ raid_error_t raid_disconnect(raid_client_t* cl)
 
 void raid_destroy(raid_client_t* cl)
 {
+    if (cl->host) {
+        free(cl->host);
+    }
+    if (cl->port) {
+        free(cl->port);
+    }
     pthread_mutex_destroy(&cl->reqs_mutex);
 }
 
