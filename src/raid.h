@@ -146,6 +146,7 @@ typedef struct raid_callback {
  * The client state holding sockets, requests, etc...
  */
 typedef struct raid_client {
+    unsigned int connection_id;
     raid_socket_t socket;
     char* host;
     char* port;
@@ -184,9 +185,17 @@ raid_error_t raid_connect(raid_client_t* cl);
  * @brief Returns whether the client is connected or not.
  * 
  * @param cl Raid client instance.
- * @return whether the client is connected or not.
+ * @return Whether the client is connected or not.
  */
 bool raid_connected(raid_client_t* cl);
+
+/**
+ * @brief Returns the current connection id, changes every time we open a connection.
+ * 
+ * @param cl Raid client instance.
+ * @return The current connection id.
+ */
+unsigned int raid_connection_id(raid_client_t* cl);
 
 /**
  * @brief Adds a "before_send" callback, which gets called before sending data to the server.

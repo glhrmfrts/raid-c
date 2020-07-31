@@ -235,6 +235,9 @@ raid_error_t raid_connect(raid_client_t* cl)
 {
     raid_error_t err = raid_socket_connect(&cl->socket, cl->host, cl->port);
     if (err == RAID_SUCCESS) {
+        // Increment connection id
+        __sync_fetch_and_add((volatile unsigned int*)&cl->connection_id, 1);
+
         int res = pthread_create(&cl->recv_thread, NULL, &raid_recv_loop, (void*)cl);
         if (res != 0) {
             fprintf(stderr, "Cannot create thread: %s\n", strerror(res));
@@ -247,6 +250,11 @@ raid_error_t raid_connect(raid_client_t* cl)
 bool raid_connected(raid_client_t* cl)
 {
     return raid_socket_connected(&cl->socket);
+}
+
+unsigned int raid_connection_id(raid_client_t* cl)
+{
+    return __sync_fetch_and_add((volatile unsigned int*)&cl->connection_id, 0);
 }
 
 void raid_add_before_send_callback(raid_client_t* cl, raid_before_send_callback_t cb, void* user_data)
