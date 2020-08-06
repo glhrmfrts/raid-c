@@ -301,6 +301,24 @@ void raid_reader_destroy(raid_reader_t* r);
  */
 void raid_reader_swap(raid_reader_t* from, raid_reader_t* to);
 
+raid_reader_t* raid_reader_new();
+
+void raid_reader_delete(raid_reader_t* r);
+
+bool raid_is_nil(raid_reader_t* r);
+
+bool raid_is_int(raid_reader_t* r);
+
+bool raid_is_float(raid_reader_t* r);
+
+bool raid_is_string(raid_reader_t* r);
+
+bool raid_is_binary(raid_reader_t* r);
+
+bool raid_is_array(raid_reader_t* r);
+
+bool raid_is_map(raid_reader_t* r);
+
 /**
  * @brief Returns true if the response message code is equal to this one.
  * 
@@ -479,6 +497,10 @@ void raid_writer_init(raid_writer_t* w, raid_client_t* cl);
  */
 void raid_writer_destroy(raid_writer_t* w);
 
+raid_writer_t* raid_writer_new(raid_client_t* cl);
+
+void raid_writer_delete(raid_writer_t* w);
+
 /**
  * @brief Begin writing a request message to send to the server.
  * 
@@ -586,6 +608,10 @@ raid_error_t raid_write_arrayf(raid_writer_t* w, int n, const char* format, ...)
  * @return Any errors that might occur.
  */
 raid_error_t raid_write_mapf(raid_writer_t* w, int n, const char* format, ...);
+
+char* raid_writer_data(raid_writer_t* w);
+
+size_t raid_writer_size(raid_writer_t* w);
 
 /**
  * @brief Get human-readable description for errors.

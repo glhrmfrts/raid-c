@@ -85,6 +85,31 @@ void raid_writer_destroy(raid_writer_t* w)
     msgpack_sbuffer_destroy(&w->sbuf);
 }
 
+raid_writer_t* raid_writer_new(raid_client_t* cl)
+{
+    raid_writer_t* w = malloc(sizeof(raid_writer_t));
+    raid_writer_init(w, cl);
+    return w;
+}
+
+void raid_writer_delete(raid_writer_t* w)
+{
+    if (w == NULL) return;
+    
+    raid_writer_destroy(w);
+    free(w);
+}
+
+char* raid_writer_data(raid_writer_t* w)
+{
+    return w->sbuf.data;
+}
+
+size_t raid_writer_size(raid_writer_t* w)
+{
+    return w->sbuf.size;
+}
+
 raid_error_t raid_write_message(raid_writer_t* w, const char* action)
 {
     return raid_write_message_ex(w, action, true);

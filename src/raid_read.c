@@ -48,6 +48,21 @@ void raid_reader_init(raid_reader_t* r)
     msgpack_zone_init(r->mempool, 4096);
 }
 
+raid_reader_t* raid_reader_new()
+{
+    raid_reader_t* r = malloc(sizeof(raid_reader_t));
+    raid_reader_init(r);
+    return r;
+}
+
+void raid_reader_delete(raid_reader_t* r)
+{
+    if (r == NULL) return;
+
+    raid_reader_destroy(r);
+    free(r);
+}
+
 void raid_reader_init_with_data(raid_reader_t* r, const char* data, size_t data_len)
 {
     raid_reader_init(r);
@@ -94,6 +109,41 @@ void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len, b
     else {
         r->body = r->nested = r->obj;
     }
+}
+
+bool raid_is_nil(raid_reader_t* r)
+{
+    return raid_read_type(r) == RAID_NIL;
+}
+
+bool raid_is_int(raid_reader_t* r)
+{
+    return raid_read_type(r) == RAID_INT;
+}
+
+bool raid_is_float(raid_reader_t* r)
+{
+    return raid_read_type(r) == RAID_FLOAT;
+}
+
+bool raid_is_string(raid_reader_t* r)
+{
+    return raid_read_type(r) == RAID_STRING;
+}
+
+bool raid_is_binary(raid_reader_t* r)
+{
+    return raid_read_type(r) == RAID_BINARY;
+}
+
+bool raid_is_array(raid_reader_t* r)
+{
+    return raid_read_type(r) == RAID_ARRAY;
+}
+
+bool raid_is_map(raid_reader_t* r)
+{
+    return raid_read_type(r) == RAID_MAP;
 }
 
 bool raid_is_code(raid_reader_t* r, const char* code)
