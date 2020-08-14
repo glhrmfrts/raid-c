@@ -116,6 +116,11 @@ bool raid_is_nil(raid_reader_t* r)
     return raid_read_type(r) == RAID_NIL;
 }
 
+bool raid_is_bool(raid_reader_t* r)
+{
+    return raid_read_type(r) == RAID_BOOL;
+}
+
 bool raid_is_int(raid_reader_t* r)
 {
     return raid_read_type(r) == RAID_INT;
@@ -212,6 +217,9 @@ raid_type_t raid_read_type(raid_reader_t* r)
     case MSGPACK_OBJECT_NIL:
         return RAID_NIL;
 
+    case MSGPACK_OBJECT_BOOLEAN:
+        return RAID_BOOL;
+
     case MSGPACK_OBJECT_POSITIVE_INTEGER:
     case MSGPACK_OBJECT_NEGATIVE_INTEGER:
         return RAID_INT;
@@ -233,6 +241,17 @@ raid_type_t raid_read_type(raid_reader_t* r)
     default:
         return RAID_INVALID;
     }
+}
+
+bool raid_read_bool(raid_reader_t* r, bool* res)
+{
+    if (!r->nested) return false;
+
+    if (r->nested->type != MSGPACK_OBJECT_BOOLEAN)
+        return false;
+
+    *res = r->nested->via.boolean;
+    return true;
 }
 
 bool raid_read_int(raid_reader_t* r, int64_t* res)

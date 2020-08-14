@@ -127,6 +127,18 @@ raid_error_t raid_write_nil(raid_writer_t* w)
     return RAID_SUCCESS;
 }
 
+raid_error_t raid_write_bool(raid_writer_t* w, bool b)
+{
+    msgpack_packer* pk = &w->pk;
+    if (b) {
+        msgpack_pack_true(pk);
+    }
+    else {
+        msgpack_pack_false(pk);
+    }
+    return RAID_SUCCESS;
+}
+
 raid_error_t raid_write_int(raid_writer_t* w, int64_t n)
 {
     msgpack_packer* pk = &w->pk;

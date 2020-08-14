@@ -52,6 +52,7 @@ typedef enum {
 typedef enum {
     RAID_INVALID,
     RAID_NIL,
+    RAID_BOOL,
     RAID_INT,
     RAID_FLOAT,
     RAID_STRING,
@@ -307,6 +308,8 @@ void raid_reader_delete(raid_reader_t* r);
 
 bool raid_is_nil(raid_reader_t* r);
 
+bool raid_is_bool(raid_reader_t* r);
+
 bool raid_is_int(raid_reader_t* r);
 
 bool raid_is_float(raid_reader_t* r);
@@ -356,6 +359,8 @@ bool raid_read_etag_cstring(raid_reader_t* r, char** res);
  * @return The type of the value.
  */
 raid_type_t raid_read_type(raid_reader_t* r);
+
+bool raid_read_bool(raid_reader_t* r, bool* res);
 
 /**
  * @brief Reads an integer from the response message body.
@@ -528,6 +533,8 @@ raid_error_t raid_write_object(raid_writer_t* w, const msgpack_object* obj);
  * @return Any errors that might occur.
  */
 raid_error_t raid_write_nil(raid_writer_t* w);
+
+raid_error_t raid_write_bool(raid_writer_t* w, bool b);
 
 /**
  * @brief Write an integer in the request body.
