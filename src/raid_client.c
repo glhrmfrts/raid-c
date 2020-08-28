@@ -313,8 +313,6 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
         result = raid_socket_send(&cl->socket, w->sbuf.data, size);
     }
 
-    debug_etags(cl);
-
     pthread_mutex_unlock(&cl->reqs_mutex);
 
     return result;

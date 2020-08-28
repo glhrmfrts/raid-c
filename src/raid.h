@@ -31,8 +31,16 @@
 #ifndef RAID_H
 #define RAID_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include <stdint.h>
 #include <pthread.h>
 #include <msgpack.h>
+
+typedef int64_t raid_int_t;
+typedef double raid_float_t;
 
 struct raid_client;
 
@@ -628,5 +636,8 @@ size_t raid_writer_size(raid_writer_t* w);
  */
 const char* raid_error_to_string(raid_error_t err);
 
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 #endif
