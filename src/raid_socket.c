@@ -160,8 +160,8 @@ static raid_error_t socket_impl_send(raid_socket_t* s, const char* data, size_t 
     //printf("%d %d %d %d\n", data[0], data[1], data[2], data[3]);
     //printf("%s\n", data);
     //printf("%d\n", data_len);
-    int nwrite = send((int)s->handle, data, data_len, 0);
-    return (nwrite == data_len) ? RAID_SUCCESS : RAID_UNKNOWN;
+    ssize_t nwrite = send((int)s->handle, data, data_len, 0);
+    return ((size_t)nwrite == data_len) ? RAID_SUCCESS : RAID_UNKNOWN;
 }
 
 static raid_error_t socket_impl_recv(raid_socket_t* s, char* buf, size_t buf_len, int* out_len)

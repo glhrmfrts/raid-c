@@ -155,7 +155,7 @@ bool raid_is_code(raid_reader_t* r, const char* code)
 {
     if (!r->header) return false;
 
-    for (int i = 0; i < r->header->via.map.size; i++) {
+    for (size_t i = 0; i < r->header->via.map.size; i++) {
         if (!strncmp("code", r->header->via.map.ptr[i].key.via.str.ptr, 4)) {
             return !strncmp(code, r->header->via.map.ptr[i].val.via.str.ptr, strlen(code));
         }
@@ -167,7 +167,7 @@ bool raid_read_code(raid_reader_t* r, char** res, size_t* len)
 {
     if (!r->header) return false;
 
-    for (int i = 0; i < r->header->via.map.size; i++) {
+    for (size_t i = 0; i < r->header->via.map.size; i++) {
         const char* ptr = r->header->via.map.ptr[i].val.via.str.ptr;
         size_t size = r->header->via.map.ptr[i].val.via.str.size;
         if (!strncmp("code", r->header->via.map.ptr[i].key.via.str.ptr, 4)) {
@@ -184,7 +184,7 @@ bool raid_read_code_cstring(raid_reader_t* r, char** res)
 {
     if (!r->header) return false;
 
-    for (int i = 0; i < r->header->via.map.size; i++) {
+    for (size_t i = 0; i < r->header->via.map.size; i++) {
         const char* ptr = r->header->via.map.ptr[i].val.via.str.ptr;
         size_t size = r->header->via.map.ptr[i].val.via.str.size;
         if (!strncmp("code", r->header->via.map.ptr[i].key.via.str.ptr, 4)) {
