@@ -376,7 +376,7 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
     
     // Send data to socket
     int32_t size = w->sbuf.size;
-    static char data_size[4];
+    char data_size[4];
     data_size[0] = (size >> 24) & 0xFF;
     data_size[1] = (size >> 16) & 0xFF;
     data_size[2] = (size >> 8) & 0xFF;
