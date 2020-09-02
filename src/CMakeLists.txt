@@ -7,4 +7,4 @@ file(GLOB HEADER_FILES *.h)
 
 add_library(${TARGET_NAME} ${SOURCE_FILES} ${HEADER_FILES})
 
-target_compile_options(${TARGET_NAME} PRIVATE -g -Wall -Wextra -pedantic -std=gnu99 -fPIC)
+target_compile_options(${TARGET_NAME} PRIVATE -g -Wall -Wextra -pedantic -Wnewline-eof -std=gnu99 -fPIC)

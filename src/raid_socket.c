@@ -111,6 +111,73 @@ static raid_error_t socket_impl_disconnect(raid_socket_t* s)
 
 #else
 
+static void socket_log_error(const char* op_name)
+{
+    char* err_name = NULL;
+    switch (errno) {
+    case EBADF:
+        err_name = "EBADF";
+        break;
+    case EINVAL:
+        err_name = "EINVAL";
+        break;
+    case ENOTCONN:
+        err_name = "ENOTCONN";
+        break;
+    case ENOTSOCK:
+        err_name = "ENOTSOCK";
+        break;
+    case ENOBUFS:
+        err_name = "ENOBUFS";
+        break;
+    case EINTR:
+        err_name = "EINTR";
+        break;
+    case EIO:
+        err_name = "EIO";
+        break;
+    case ECONNREFUSED:
+        err_name = "ECONNREFUSED";
+        break;
+    case EFAULT:
+        err_name = "EFAULT";
+        break;
+    case ENOMEM:
+        err_name = "ENOMEM";
+        break;
+    case EAGAIN:
+        err_name = "EAGAIN";
+        break;
+    case EISCONN:
+        err_name = "EISCONN";
+        break;
+    case EMSGSIZE:
+        err_name = "EMSGSIZE";
+        break;
+    case EPIPE:
+        err_name = "EPIPE";
+        break;
+    case EOPNOTSUPP:
+        err_name = "EOPNOTSUPP";
+        break;
+    default:
+        err_name = "unknown";
+        break;
+    }
+    if (err_name) {
+        fprintf(stderr, "socket %s failed with error: %s (%d)\n", op_name, err_name, errno);
+    }
+}
+
+static bool is_not_connected_err(int val)
+{
+    return (
+        val == EPIPE || val == ENOTCONN ||
+        val == ENOTSOCK || val == ECONNRESET ||
+        val == ECONNREFUSED || val == EBADF
+    );
+}
+
 static raid_error_t socket_impl_connect(raid_socket_t* s, const char* host, const char* port)
 {
     int ret = 0;
@@ -160,8 +227,24 @@ static raid_error_t socket_impl_send(raid_socket_t* s, const char* data, size_t 
     //printf("%d %d %d %d\n", data[0], data[1], data[2], data[3]);
     //printf("%s\n", data);
     //printf("%d\n", data_len);
-    ssize_t nwrite = send((int)s->handle, data, data_len, 0);
-    return ((size_t)nwrite == data_len) ? RAID_SUCCESS : RAID_UNKNOWN;
+    if (!raid_socket_connected(s)) {
+        return RAID_NOT_CONNECTED;
+    }
+
+    const ssize_t nwrite = send((int)s->handle, data, data_len, 0);
+    raid_error_t res = RAID_SUCCESS;
+
+    if (is_not_connected_err(errno)) {
+        res = RAID_NOT_CONNECTED;
+    }
+    else {
+        res = ((size_t)nwrite == data_len) ? RAID_SUCCESS : RAID_UNKNOWN;
+    }
+
+    if (res != RAID_SUCCESS) {
+        socket_log_error("send");
+    }
+    return res;
 }
 
 static raid_error_t socket_impl_recv(raid_socket_t* s, char* buf, size_t buf_len, int* out_len)
@@ -171,11 +254,12 @@ static raid_error_t socket_impl_recv(raid_socket_t* s, char* buf, size_t buf_len
     if (errno == EWOULDBLOCK || errno == EAGAIN) {
         return RAID_RECV_TIMEOUT;
     }
-    if (errno == ECONNREFUSED || errno == ENOTCONN || errno == ENOTSOCK || errno == EBADF) {
+    if (is_not_connected_err(errno)) {
+        socket_log_error("recv");
         return RAID_NOT_CONNECTED;
     }
     if (*out_len < 0) {
-        fprintf(stderr, "recv failed with error: %d\n", errno);
+        socket_log_error("recv");
         return RAID_UNKNOWN;
     }
     return RAID_SUCCESS;
@@ -187,12 +271,12 @@ static raid_error_t socket_impl_disconnect(raid_socket_t* s)
 
     ret = shutdown((int)s->handle, SHUT_RDWR);
     if (ret == -1) {
-        return RAID_SHUTDOWN_ERROR;
+        socket_log_error("shutdown");
     }
 
     ret = close(s->handle);
     if (ret == -1) {
-        return RAID_CLOSE_ERROR;
+        socket_log_error("close");
     }
 
     s->handle = -1;

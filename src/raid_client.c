@@ -313,6 +313,10 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
         result = raid_socket_send(&cl->socket, w->sbuf.data, size);
     }
 
+    if (result == RAID_NOT_CONNECTED) {
+        raid_socket_close(&cl->socket);
+    }
+
     pthread_mutex_unlock(&cl->reqs_mutex);
 
     return result;
@@ -415,7 +419,7 @@ static void* raid_recv_loop(void* arg)
         }
 
         raid_error_t err = raid_socket_recv(&cl->socket, buf, sizeof(buf), &buf_len);
-        if (err) {
+        if (err && err != RAID_RECV_TIMEOUT) {
             fprintf(stderr, "[raid] recv error: %s\n", raid_error_to_string(err));
         }
 
