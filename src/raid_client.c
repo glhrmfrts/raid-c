@@ -13,8 +13,6 @@ typedef struct {
     raid_writer_t response_writer;
 } request_sync_data_t;
 
-static void* raid_recv_loop(void* arg);
-
 static void debug_etags(raid_client_t* cl)
 {
     raid_request_t* req = cl->reqs;
@@ -212,6 +210,69 @@ static void request_sync_destroy(request_sync_data_t* data)
     raid_writer_destroy(&data->response_writer);
 }
 
+static void clear_requests_locked(raid_client_t* cl)
+{
+    pthread_mutex_lock(&cl->reqs_mutex);
+    raid_request_t* req = cl->reqs;
+    while (req) {
+        req->callback(cl, NULL, RAID_NOT_CONNECTED, req->callback_user_data);
+
+        raid_request_t* swap = req;
+        req = req->next;
+        free(swap->etag);
+        free(swap);
+    }
+    cl->reqs = NULL;
+    pthread_mutex_unlock(&cl->reqs_mutex);
+}
+
+static void check_requests_for_timeout_locked(raid_client_t* cl, raid_error_t recv_err)
+{
+    pthread_mutex_lock(&cl->reqs_mutex);
+
+    int64_t now_time = (int64_t)time(NULL);
+    raid_request_t* req = cl->reqs;
+    while (req) {
+        raid_request_t* next_req = req->next;
+        bool should_remove = (recv_err == RAID_NOT_CONNECTED) || ((now_time - req->created_at) > req->timeout_secs);
+        if (should_remove) {
+            req->callback(cl, NULL, recv_err, req->callback_user_data);
+
+            LIST_REMOVE(cl->reqs, req);
+            free(req->etag);
+            free(req);
+        }
+
+        req = next_req;
+    }
+
+    pthread_mutex_unlock(&cl->reqs_mutex);
+}
+
+static void* raid_recv_loop(void* arg)
+{
+    raid_client_t* cl = (raid_client_t*)arg;
+    char buf[4096];
+    int buf_len = 0;
+
+    while (raid_socket_connected(&cl->socket)) {
+        raid_error_t err = raid_socket_recv(&cl->socket, buf, sizeof(buf), &buf_len);
+        if (err && err != RAID_RECV_TIMEOUT) {
+            fprintf(stderr, "[raid] recv error: %s\n", raid_error_to_string(err));
+        }
+
+        if (buf_len > 0) {
+            process_data(cl, buf, buf_len);
+        }
+        buf_len = 0;
+
+        check_requests_for_timeout_locked(cl, err);
+    }
+
+    clear_requests_locked(cl);
+    return NULL;
+}
+
 raid_error_t raid_init(raid_client_t* cl, const char* host, const char* port)
 {
     if (!host || !port)
@@ -242,6 +303,9 @@ raid_error_t raid_connect(raid_client_t* cl)
         if (res != 0) {
             fprintf(stderr, "Cannot create thread: %s\n", strerror(res));
             return RAID_UNKNOWN;
+        }
+        else {
+            pthread_detach(cl->recv_thread);
         }
     }
     return err;
@@ -286,17 +350,11 @@ void raid_add_msg_recv_callback(raid_client_t* cl, raid_msg_recv_callback_t cb, 
 
 raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_response_callback_t cb, void* user_data)
 {
-    pthread_mutex_lock(&cl->reqs_mutex);
+    if (!raid_socket_connected(&cl->socket)) {
+        return RAID_NOT_CONNECTED;
+    }
 
-    // Append a request to the list
-    raid_request_t* req = malloc(sizeof(raid_request_t));
-    memset(req, 0, sizeof(raid_request_t));
-    req->created_at = (int64_t)time(NULL);
-    req->timeout_secs = RAID_TIMEOUT_DEFAULT_SECS;
-    req->etag = strdup(w->etag);
-    req->callback = cb;
-    req->callback_user_data = user_data;
-    LIST_APPEND(cl->reqs, req);
+    pthread_mutex_lock(&cl->reqs_mutex);
     
     // Send data to socket
     int32_t size = w->sbuf.size;
@@ -309,12 +367,23 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
     call_before_send_callbacks(cl, w->sbuf.data, size);
 
     raid_error_t result = raid_socket_send(&cl->socket, data_size, sizeof(data_size));
-    if (!result) {
+    if (result == RAID_SUCCESS) {
         result = raid_socket_send(&cl->socket, w->sbuf.data, size);
     }
 
     if (result == RAID_NOT_CONNECTED) {
         raid_socket_close(&cl->socket);
+    }
+    else if (result == RAID_SUCCESS) {
+        // Append a request to the list
+        raid_request_t* req = malloc(sizeof(raid_request_t));
+        memset(req, 0, sizeof(raid_request_t));
+        req->created_at = (int64_t)time(NULL);
+        req->timeout_secs = RAID_TIMEOUT_DEFAULT_SECS;
+        req->etag = strdup(w->etag);
+        req->callback = cb;
+        req->callback_user_data = user_data;
+        LIST_APPEND(cl->reqs, req);
     }
 
     pthread_mutex_unlock(&cl->reqs_mutex);
@@ -357,19 +426,8 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
 
 raid_error_t raid_disconnect(raid_client_t* cl)
 {
-    raid_request_t* req = cl->reqs;
-    while (req) {
-        req->callback(cl, NULL, RAID_NOT_CONNECTED, req->callback_user_data);
-
-        raid_request_t* swap = req;
-        req = req->next;
-        free(swap->etag);
-        free(swap);
-    }
-    cl->reqs = NULL;
-
+    clear_requests_locked(cl);
     raid_error_t err = raid_socket_close(&cl->socket);
-    pthread_join(cl->recv_thread, NULL);
     return err;
 }
 
@@ -382,54 +440,4 @@ void raid_destroy(raid_client_t* cl)
         free(cl->port);
     }
     pthread_mutex_destroy(&cl->reqs_mutex);
-}
-
-static void check_requests_for_timeout(raid_client_t* cl, raid_error_t recv_err)
-{
-    pthread_mutex_lock(&cl->reqs_mutex);
-
-    int64_t now_time = (int64_t)time(NULL);
-    raid_request_t* req = cl->reqs;
-    while (req) {
-        raid_request_t* next_req = req->next;
-        bool should_remove = (recv_err == RAID_NOT_CONNECTED) || ((now_time - req->created_at) > req->timeout_secs);
-        if (should_remove) {
-            req->callback(cl, NULL, recv_err, req->callback_user_data);
-
-            LIST_REMOVE(cl->reqs, req);
-            free(req->etag);
-            free(req);
-        }
-
-        req = next_req;
-    }
-
-    pthread_mutex_unlock(&cl->reqs_mutex);
-}
-
-static void* raid_recv_loop(void* arg)
-{
-    raid_client_t* cl = (raid_client_t*)arg;
-    char buf[4096];
-    int buf_len = 0;
-
-    while (true) {
-        if (!raid_socket_connected(&cl->socket)) {
-            break;
-        }
-
-        raid_error_t err = raid_socket_recv(&cl->socket, buf, sizeof(buf), &buf_len);
-        if (err && err != RAID_RECV_TIMEOUT) {
-            fprintf(stderr, "[raid] recv error: %s\n", raid_error_to_string(err));
-        }
-
-        if (buf_len > 0) {
-            process_data(cl, buf, buf_len);
-        }
-        buf_len = 0;
-
-        check_requests_for_timeout(cl, err);
-    }
-
-    return NULL;
 }
