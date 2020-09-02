@@ -273,6 +273,22 @@ static void* raid_recv_loop(void* arg)
     return NULL;
 }
 
+static void join_recv_thread(raid_client_t* cl)
+{
+    if (cl->recv_thread_active) {
+        cl->recv_thread_active = false;
+        pthread_join(cl->recv_thread, NULL);
+    }
+}
+
+static void detach_recv_thread(raid_client_t* cl)
+{
+    if (cl->recv_thread_active) {
+        cl->recv_thread_active = false;
+        pthread_detach(cl->recv_thread);
+    }
+}
+
 raid_error_t raid_init(raid_client_t* cl, const char* host, const char* port)
 {
     if (!host || !port)
@@ -295,6 +311,8 @@ raid_error_t raid_init(raid_client_t* cl, const char* host, const char* port)
 raid_error_t raid_connect(raid_client_t* cl)
 {
     raid_error_t err = raid_socket_connect(&cl->socket, cl->host, cl->port);
+    cl->recv_thread_active = false;
+
     if (err == RAID_SUCCESS) {
         // Increment connection id
         __sync_fetch_and_add((volatile unsigned int*)&cl->connection_id, 1);
@@ -305,7 +323,7 @@ raid_error_t raid_connect(raid_client_t* cl)
             return RAID_UNKNOWN;
         }
         else {
-            pthread_detach(cl->recv_thread);
+            cl->recv_thread_active = true;
         }
     }
     return err;
@@ -373,6 +391,7 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
 
     if (result == RAID_NOT_CONNECTED) {
         raid_socket_close(&cl->socket);
+        detach_recv_thread(cl);
     }
     else if (result == RAID_SUCCESS) {
         // Append a request to the list
@@ -426,13 +445,18 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
 
 raid_error_t raid_disconnect(raid_client_t* cl)
 {
-    clear_requests_locked(cl);
     raid_error_t err = raid_socket_close(&cl->socket);
+    join_recv_thread(cl);
     return err;
 }
 
 void raid_destroy(raid_client_t* cl)
 {
+    if (raid_socket_connected(&cl->socket)) {
+        raid_socket_close(&cl->socket);
+    }
+
+    join_recv_thread(cl);
     if (cl->host) {
         free(cl->host);
     }

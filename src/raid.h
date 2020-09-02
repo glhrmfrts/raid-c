@@ -172,6 +172,7 @@ typedef struct raid_client {
     raid_callback_t* callbacks;
     pthread_mutex_t reqs_mutex;
     pthread_t recv_thread;
+    bool recv_thread_active;
 } raid_client_t;
 
 /**
