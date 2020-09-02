@@ -26,11 +26,17 @@ static msgpack_object* parent(raid_reader_t* r)
     return r->parents[r->nested_top - 1];
 }
 
-static void begin_collection(raid_reader_t* r)
+static bool begin_collection(raid_reader_t* r)
 {
-    r->indices[r->nested_top] = 0;
-    r->parents[r->nested_top] = r->nested;
-    r->nested_top++;
+    if (r->nested_top >= RAID_READER_MAX_DEPTH) {
+        return false;
+    }
+    else {
+        r->indices[r->nested_top] = 0;
+        r->parents[r->nested_top] = r->nested;
+        r->nested_top++;
+        return true;
+    }
 }
 
 static void end_collection(raid_reader_t* r)
@@ -384,15 +390,17 @@ bool raid_read_begin_array(raid_reader_t* r, size_t* len)
 {
     if (!r->nested) return false;
 
-    if (r->nested->type != MSGPACK_OBJECT_ARRAY)
+    if (r->nested->type != MSGPACK_OBJECT_ARRAY) return false;
+
+    if (begin_collection(r)) {
+        *len = r->nested->via.array.size;
+        r->nested = r->nested->via.array.ptr;
+        return true;
+    }
+    else {
+        fprintf(stderr, "[raid] raid_read_begin_array: max recursion depth exceeded\n");
         return false;
-
-    *len = r->nested->via.array.size;
-
-    begin_collection(r);
-    r->nested = r->nested->via.array.ptr;
-    
-    return true;
+    }
 }
 
 void raid_read_end_array(raid_reader_t* r)
@@ -406,14 +414,17 @@ bool raid_read_begin_map(raid_reader_t* r, size_t* len)
 {
     if (!r->nested) return false;
 
-    if (r->nested->type != MSGPACK_OBJECT_MAP)
+    if (r->nested->type != MSGPACK_OBJECT_MAP) return false;
+
+    if (begin_collection(r)) {
+        *len = r->nested->via.map.size;
+        r->nested = &r->nested->via.map.ptr->val;
+        return true;
+    }
+    else {
+        fprintf(stderr, "[raid] raid_read_begin_map: max recursion depth exceeded\n");
         return false;
-
-    *len = r->nested->via.map.size;
-
-    begin_collection(r);
-    r->nested = &r->nested->via.map.ptr->val;
-    return true;
+    }
 }
 
 void raid_read_end_map(raid_reader_t* r)

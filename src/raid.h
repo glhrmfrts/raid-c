@@ -39,6 +39,8 @@ extern "C" {
 #include <pthread.h>
 #include <msgpack.h>
 
+#define RAID_READER_MAX_DEPTH 64
+
 typedef int64_t raid_int_t;
 typedef double raid_float_t;
 
@@ -88,8 +90,8 @@ typedef struct raid_reader {
     msgpack_object* header;
     msgpack_object* body;
     msgpack_object* nested;
-    msgpack_object* parents[64];
-    int indices[64];
+    msgpack_object* parents[RAID_READER_MAX_DEPTH];
+    int indices[RAID_READER_MAX_DEPTH];
     int nested_top;
 } raid_reader_t;
 
