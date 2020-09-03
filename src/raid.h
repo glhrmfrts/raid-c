@@ -631,6 +631,10 @@ char* raid_writer_data(raid_writer_t* w);
 
 size_t raid_writer_size(raid_writer_t* w);
 
+void* raid_alloc(size_t size, const char* name);
+
+void raid_dealloc(void* ptr, const char* name);
+
 /**
  * @brief Get human-readable description for errors.
  * 

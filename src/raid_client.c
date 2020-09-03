@@ -5,6 +5,9 @@
 
 #define RAID_TIMEOUT_DEFAULT_SECS (10)
 
+// 1GB
+#define RAID_MAX_MSG_SIZE (1*1024*1024*1024)
+
 typedef struct {
     pthread_cond_t cond_var;
     pthread_mutex_t mutex;
@@ -68,6 +71,13 @@ static void call_msg_recv_callbacks(raid_client_t* cl, raid_reader_t* r)
     }
 }
 
+static void free_request(raid_request_t* req)
+{
+    const char* etag = req->etag;
+    raid_dealloc(req, etag);
+    free(etag);
+}
+
 static raid_request_t* find_request(raid_client_t* cl, const char* etag)
 {
     raid_request_t* req = cl->reqs;
@@ -96,8 +106,7 @@ static void reply_request(raid_client_t* cl, raid_reader_t* r)
 
         pthread_mutex_lock(&cl->reqs_mutex);
         LIST_REMOVE(cl->reqs, req);
-        free(req->etag);
-        free(req);
+        free_request(req);
         pthread_mutex_unlock(&cl->reqs_mutex);
     }
 }
@@ -122,11 +131,16 @@ static int read_message(raid_client_t* cl)
         if ((cl->in_end - cl->in_ptr) < 4) return -1;
 
         uint32_t len = ((uint8_t)cl->in_ptr[0] << 24) | ((uint8_t)cl->in_ptr[1] << 16) | ((uint8_t)cl->in_ptr[2] << 8) | ((uint8_t)cl->in_ptr[3]);
-        cl->state = RAID_STATE_PROCESSING_MESSAGE;
-        cl->msg_total_size = len;
-        cl->msg_len = 0;
-        cl->msg_buf = malloc(cl->msg_total_size*sizeof(char));
-        return 4;
+        if (len <= RAID_MAX_MSG_SIZE) {
+            cl->state = RAID_STATE_PROCESSING_MESSAGE;
+            cl->msg_total_size = len;
+            cl->msg_len = 0;
+            cl->msg_buf = raid_alloc(cl->msg_total_size*sizeof(char), "msg_buf");
+            return 4;
+        }
+        else {
+            return -1;
+        }
     }
 
     case RAID_STATE_PROCESSING_MESSAGE: {
@@ -142,7 +156,7 @@ static int read_message(raid_client_t* cl)
         if (cl->msg_len >= cl->msg_total_size) {
             call_after_recv_callbacks(cl, cl->msg_buf, cl->msg_len);
             parse_response(cl);
-            free(cl->msg_buf);
+            raid_dealloc(cl->msg_buf, "msg_buf");
             cl->msg_buf = NULL;
             cl->state = RAID_STATE_WAIT_MESSAGE;
         }
@@ -219,8 +233,7 @@ static void clear_requests_locked(raid_client_t* cl)
 
         raid_request_t* swap = req;
         req = req->next;
-        free(swap->etag);
-        free(swap);
+        free_request(swap);
     }
     cl->reqs = NULL;
     pthread_mutex_unlock(&cl->reqs_mutex);
@@ -239,8 +252,7 @@ static void check_requests_for_timeout_locked(raid_client_t* cl, raid_error_t re
             req->callback(cl, NULL, recv_err, req->callback_user_data);
 
             LIST_REMOVE(cl->reqs, req);
-            free(req->etag);
-            free(req);
+            free_request(req);
         }
 
         req = next_req;
@@ -263,6 +275,14 @@ static void* raid_recv_loop(void* arg)
 
         if (buf_len > 0) {
             process_data(cl, buf, buf_len);
+        }
+        else if (err == RAID_RECV_TIMEOUT) {
+            check_requests_for_timeout_locked(cl, err);
+            if (!cl->reqs && cl->state == RAID_STATE_PROCESSING_MESSAGE) {
+                cl->state = RAID_STATE_WAIT_MESSAGE;
+                raid_dealloc(cl->msg_buf, "msg_buf (timeout)");
+                cl->msg_buf = NULL;
+            }
         }
         buf_len = 0;
 
@@ -395,7 +415,7 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
     }
     else if (result == RAID_SUCCESS) {
         // Append a request to the list
-        raid_request_t* req = malloc(sizeof(raid_request_t));
+        raid_request_t* req = raid_alloc(sizeof(raid_request_t), w->etag);
         memset(req, 0, sizeof(raid_request_t));
         req->created_at = (int64_t)time(NULL);
         req->timeout_secs = RAID_TIMEOUT_DEFAULT_SECS;

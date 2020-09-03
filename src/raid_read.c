@@ -41,6 +41,8 @@ static bool begin_collection(raid_reader_t* r)
 
 static void end_collection(raid_reader_t* r)
 {
+    if (!parent(r)) return;
+
     r->nested_top--;
     r->nested = r->parents[r->nested_top];
 }
@@ -49,8 +51,10 @@ void raid_reader_init(raid_reader_t* r)
 {
     memset(r, 0, sizeof(raid_reader_t));
 
-    r->mempool = malloc(sizeof(msgpack_zone));
-    r->obj = malloc(sizeof(msgpack_object));
+    r->mempool = raid_alloc(sizeof(msgpack_zone), "reader.mempool");
+    r->obj = raid_alloc(sizeof(msgpack_object), "reader.obj");
+    r->obj->type = MSGPACK_OBJECT_NIL;
+
     msgpack_zone_init(r->mempool, 4096);
 }
 
@@ -79,13 +83,13 @@ void raid_reader_destroy(raid_reader_t* r)
 {
     if (r->mempool != NULL) {
         msgpack_zone_destroy(r->mempool);
-        free(r->mempool);
+        raid_dealloc(r->mempool, "reader.mempool");
     }
     if (r->obj != NULL) {
-        free(r->obj);
+        raid_dealloc(r->obj, "reader.obj");
     }
     if (r->src_data) {
-        free(r->src_data);
+        raid_dealloc(r->src_data, "reader.src_data");
     }
 }
 
@@ -98,8 +102,10 @@ void raid_reader_swap(raid_reader_t* from, raid_reader_t* to)
 
 void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len, bool is_response)
 {
+    if (!data || !data_len) return;
+
     // Copy the data because msgpack likes to hold pointers to our memory!!!!1
-    r->src_data = malloc(sizeof(char)*data_len);
+    r->src_data = raid_alloc(sizeof(char)*data_len, "reader.src_data");
     r->src_data_len = data_len;
     memcpy(r->src_data, data, data_len);
 
@@ -388,7 +394,7 @@ bool raid_is_map_key(raid_reader_t* r, const char* key)
 
 bool raid_read_begin_array(raid_reader_t* r, size_t* len)
 {
-    if (!r->nested) return false;
+    if (!r->nested || !len) return false;
 
     if (r->nested->type != MSGPACK_OBJECT_ARRAY) return false;
 
@@ -398,6 +404,7 @@ bool raid_read_begin_array(raid_reader_t* r, size_t* len)
         return true;
     }
     else {
+        *len = 0;
         fprintf(stderr, "[raid] raid_read_begin_array: max recursion depth exceeded\n");
         return false;
     }
@@ -412,7 +419,7 @@ void raid_read_end_array(raid_reader_t* r)
 
 bool raid_read_begin_map(raid_reader_t* r, size_t* len)
 {
-    if (!r->nested) return false;
+    if (!r->nested || !len) return false;
 
     if (r->nested->type != MSGPACK_OBJECT_MAP) return false;
 
@@ -422,6 +429,7 @@ bool raid_read_begin_map(raid_reader_t* r, size_t* len)
         return true;
     }
     else {
+        *len = 0;
         fprintf(stderr, "[raid] raid_read_begin_map: max recursion depth exceeded\n");
         return false;
     }

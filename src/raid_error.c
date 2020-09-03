@@ -24,6 +24,6 @@ const char* raid_error_to_string(raid_error_t err)
     case RAID_UNKNOWN:
         return "unknown";
     default:
-        return "TODO";
+        return "unlikely error";
     }
 }
