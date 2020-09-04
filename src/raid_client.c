@@ -71,6 +71,17 @@ static void call_msg_recv_callbacks(raid_client_t* cl, raid_reader_t* r)
     }
 }
 
+static void clear_callbacks(raid_client_t* cl)
+{
+    raid_callback_t* cb = cl->callbacks;
+    while (cb) {
+        raid_callback_t* swap = cb;
+        cb = cb->next;
+        free(swap);
+    }
+    cl->callbacks = NULL;
+}
+
 static void free_request(raid_request_t* req)
 {
     const char* etag = req->etag;
@@ -93,8 +104,12 @@ static raid_request_t* find_request(raid_client_t* cl, const char* etag)
 static void reply_request(raid_client_t* cl, raid_reader_t* r)
 {
     // Find the request to reply to.
+    raid_request_t* req = NULL;
+
     pthread_mutex_lock(&cl->reqs_mutex);
-    raid_request_t* req = find_request(cl, r->etag_obj->via.str.ptr);
+    if (r->etag_obj) {
+        req = find_request(cl, r->etag_obj->via.str.ptr);
+    }
     pthread_mutex_unlock(&cl->reqs_mutex);
 
     if (!req) {
@@ -477,11 +492,12 @@ void raid_destroy(raid_client_t* cl)
     }
 
     join_recv_thread(cl);
+    pthread_mutex_destroy(&cl->reqs_mutex);
+    clear_callbacks(cl);
     if (cl->host) {
         free(cl->host);
     }
     if (cl->port) {
         free(cl->port);
     }
-    pthread_mutex_destroy(&cl->reqs_mutex);
 }
