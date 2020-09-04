@@ -100,7 +100,7 @@ void raid_writer_delete(raid_writer_t* w)
     free(w);
 }
 
-char* raid_writer_data(raid_writer_t* w)
+const char* raid_writer_data(raid_writer_t* w)
 {
     return w->sbuf.data;
 }

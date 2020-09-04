@@ -742,7 +742,7 @@ raid_error_t raid_write_mapf(raid_writer_t* w, int n, const char* format, ...);
  * @param w Raid writer instance.
  * @return Pointer to the writer's generated data.
  */
-char* raid_writer_data(raid_writer_t* w);
+const char* raid_writer_data(raid_writer_t* w);
 
 /**
  * @brief Get the size of the writer's generated data.
