@@ -5,26 +5,48 @@
  *  Example usage:
  *
  *  @code
- *  raid_client_t client;
- *
- *  raid_error_t err = raid_connect(&client, "host", "port");
- *
- *  raid_writer_t w;
- *  raid_writer_init(&w, &hcs->raid);
- *  raid_write_message(&w, "api.action");
- *  raid_write_mapf(&w, 2, "'somenumber' %d 'somestr' %s", 42, "mystring");
- *  raid_request_async(&client, &w, response_callback, NULL); // Async request
- *
- *  raid_reader_t r;
- *  raid_reader_init(&r);
- *  raid_request(&client, &w, &r); // Sync request
- *
- *  int64_t number;
- *  raid_read_int(&r, &number); // In this example, the server returns a number
- *
- *  raid_writer_destroy(&w); // When writer is not needed anymore
- *  raid_reader_destroy(&r); // When reader is not needed anymore
- *  raid_close(&client); // Close connection
+#include <raid.h>
+
+int main(int argc, char** argv)
+{
+  raid_client_t client;
+  raid_writer_t writer;
+  raid_reader_t reader;
+  raid_error_t err;
+  
+  // Initialize the client resources
+  err = raid_init(&client, "HOST", "PORT");
+  if (err) { printf("Error initializing the client: %s\b", raid_error_to_string(err)); return 1; }
+  
+  // Connect to the server
+  err = raid_connect(&client);
+  if (err) { printf("Error connecting to server: %s\b", raid_error_to_string(err)); return 1; }
+  
+  // Write a message
+  const char* body = "Hello World";
+  raid_writer_init(&writer);
+  raid_write_message(&writer, "api.action");
+  raid_write_string(&writer, body, strlen(body));
+  
+  // Send the message and wait for the response
+  raid_reader_init(&reader);
+  err = raid_request(&client, &writer, &reader);
+  if (err) { printf("Error sending the message: %s\b", raid_error_to_string(err)); return 1; }
+  
+  // Read the response (in this case we'll suppose an echo response)
+  char* res_body = NULL;
+  if (!raid_read_cstring(&reader, &res_body)) {
+    printf("Response is not a string\n");
+    return 1;
+  }
+  
+  printf("Response: %s\n", res_body);
+  
+  raid_reader_destroy(&reader);
+  raid_writer_destroy(&writer);
+  raid_destroy(&client);
+  return 0;
+}
  *  @endcode
  */
 
@@ -313,24 +335,72 @@ void raid_reader_destroy(raid_reader_t* r);
  */
 void raid_reader_swap(raid_reader_t* from, raid_reader_t* to);
 
+/**
+ * @brief Allocates and initializes a reader instance.
+ * 
+ * @return Pointer to newly allocated reader.
+ */
 raid_reader_t* raid_reader_new();
 
+/**
+ * @brief Destroy and delete the reader state, pointer is no longer valid.
+ */
 void raid_reader_delete(raid_reader_t* r);
 
+/**
+ * @brief Check if current reader value is nil.
+ * 
+ * @return If current reader value is nil.
+ */
 bool raid_is_nil(raid_reader_t* r);
 
+/**
+ * @brief Check if current reader value is a bool.
+ * 
+ * @return If current reader value is a bool.
+ */
 bool raid_is_bool(raid_reader_t* r);
 
+/**
+ * @brief Check if current reader value is a int.
+ * 
+ * @return If current reader value is a int.
+ */
 bool raid_is_int(raid_reader_t* r);
 
+/**
+ * @brief Check if current reader value is a float.
+ * 
+ * @return If current reader value is a float.
+ */
 bool raid_is_float(raid_reader_t* r);
 
+/**
+ * @brief Check if current reader value is a string.
+ * 
+ * @return If current reader value is a string.
+ */
 bool raid_is_string(raid_reader_t* r);
 
+/**
+ * @brief Check if current reader value is a binary.
+ * 
+ * @return If current reader value is a binary.
+ */
 bool raid_is_binary(raid_reader_t* r);
 
+/**
+ * @brief Check if current reader value is a array.
+ * 
+ * @return If current reader value is a array.
+ */
 bool raid_is_array(raid_reader_t* r);
 
+/**
+ * @brief Check if current reader value is a map.
+ * 
+ * @return If current reader value is a map.
+ */
 bool raid_is_map(raid_reader_t* r);
 
 /**
@@ -353,7 +423,7 @@ bool raid_is_code(raid_reader_t* r, const char* code);
 bool raid_read_code(raid_reader_t* r, char** res, size_t* len);
 
 /**
- * @brief Reads the null-terminated code from the response message.
+ * @brief Reads the null-terminated code from the response message, the caller owns the string.
  * 
  * @param r Raid client instance.
  * @param res Pointer to receive the code string.
@@ -361,6 +431,13 @@ bool raid_read_code(raid_reader_t* r, char** res, size_t* len);
  */
 bool raid_read_code_cstring(raid_reader_t* r, char** res);
 
+/**
+ * @brief Reads the null-terminated etag from the response message, the caller owns the string.
+ * 
+ * @param r Raid client instance.
+ * @param res Pointer to receive the etag string.
+ * @return Whether the etag could be read or not.
+ */
 bool raid_read_etag_cstring(raid_reader_t* r, char** res);
 
 /**
@@ -371,6 +448,13 @@ bool raid_read_etag_cstring(raid_reader_t* r, char** res);
  */
 raid_type_t raid_read_type(raid_reader_t* r);
 
+/**
+ * @brief Reads a boolean from the response message body.
+ * 
+ * @param r Raid client instance.
+ * @param res Pointer to receive boolean value.
+ * @return Whether the value could be read or not.
+ */
 bool raid_read_bool(raid_reader_t* r, bool* res);
 
 /**
@@ -513,14 +597,25 @@ void raid_writer_init(raid_writer_t* w, raid_client_t* cl);
  */
 void raid_writer_destroy(raid_writer_t* w);
 
+/**
+ * @brief Allocate and initialize the writer state.
+ * 
+ * @param cl Client instance.
+ * @return Pointer to newly allocated writer.
+ */
 raid_writer_t* raid_writer_new(raid_client_t* cl);
 
+/**
+ * @brief Destroy and deallocate the writer state, pointer is no longer valid.
+ * 
+ * @param w Writer instance.
+ */
 void raid_writer_delete(raid_writer_t* w);
 
 /**
  * @brief Begin writing a request message to send to the server.
  * 
- * @param w Raid client instance.
+ * @param w Raid writer instance.
  * @param action Action of the message.
  * @return Any errors that might occur.
  */
@@ -529,28 +624,42 @@ raid_error_t raid_write_message(raid_writer_t* w, const char* action);
 /**
  * @brief Begin writing a request message that does not have a body, only header.
  * 
- * @param w Raid client instance.
+ * @param w Raid writer instance.
  * @param action Action of the message.
  * @return Any errors that might occur.
  */
 raid_error_t raid_write_message_without_body(raid_writer_t* w, const char* action);
 
+/**
+ * @brief Write a msgpack object in the request body.
+ * 
+ * @param w Raid writer instance.
+ * @param obj msgpack object.
+ * @return Any errors that might occur.
+ */
 raid_error_t raid_write_object(raid_writer_t* w, const msgpack_object* obj);
 
 /**
  * @brief Write nil in the request body.
  * 
- * @param w Raid client instance.
+ * @param w Raid writer instance.
  * @return Any errors that might occur.
  */
 raid_error_t raid_write_nil(raid_writer_t* w);
 
+/**
+ * @brief Write a boolean in the request body.
+ * 
+ * @param w Raid writer instance.
+ * @param b Boolean value.
+ * @return Any errors that might occur.
+ */
 raid_error_t raid_write_bool(raid_writer_t* w, bool b);
 
 /**
  * @brief Write an integer in the request body.
  * 
- * @param w Raid client instance.
+ * @param w Raid writer instance.
  * @param n Integer number.
  * @return Any errors that might occur.
  */
@@ -559,7 +668,7 @@ raid_error_t raid_write_int(raid_writer_t* w, int64_t n);
 /**
  * @brief Write a float in the request body.
  * 
- * @param w Raid client instance.
+ * @param w Raid writer instance.
  * @param n Float number.
  * @return Any errors that might occur.
  */
@@ -568,7 +677,7 @@ raid_error_t raid_write_float(raid_writer_t* w, double n);
 /**
  * @brief Write a binary array in the request body.
  * 
- * @param w Raid client instance.
+ * @param w Raid writer instance.
  * @param str Array data.
  * @param len Array size.
  * @return Any errors that might occur.
@@ -578,7 +687,7 @@ raid_error_t raid_write_binary(raid_writer_t* w, const char* data, size_t len);
 /**
  * @brief Write a string in the request body.
  * 
- * @param w Raid client instance.
+ * @param w Raid writer instance.
  * @param str String data.
  * @param len String size.
  * @return Any errors that might occur.
@@ -588,7 +697,7 @@ raid_error_t raid_write_string(raid_writer_t* w, const char* str, size_t len);
 /**
  * @brief Write an array in the request body.
  * 
- * @param w Raid client instance.
+ * @param w Raid writer instance.
  * @param len Array size.
  * @return Any errors that might occur.
  */
@@ -597,7 +706,7 @@ raid_error_t raid_write_array(raid_writer_t* w, size_t len);
 /**
  * @brief Write a map in the request body.
  * 
- * @param w Raid client instance.
+ * @param w Raid writer instance.
  * @param keys_len Number of keys in the map.
  * @return Any errors that might occur.
  */
@@ -607,7 +716,7 @@ raid_error_t raid_write_map(raid_writer_t* w, size_t keys_len);
  * @brief Variadic function to write an array in the request body according to the given format
  * and arguments passed, e.g.: @c raid_write_arrayf(cl, 2, "%d %s", 10, "string")
  * 
- * @param w Raid client instance.
+ * @param w Raid writer instance.
  * @param n Number of arguments.
  * @param format Format string.
  * @param ... Arguments to put in the array.
@@ -619,7 +728,7 @@ raid_error_t raid_write_arrayf(raid_writer_t* w, int n, const char* format, ...)
  * @brief Variadic function to write a map in the request body according to the given format
  * and arguments passed, e.g.: @c raid_write_mapf(cl, 2, "'number' %d 'name' %s", 10, "string")
  * 
- * @param w Raid client instance.
+ * @param w Raid writer instance.
  * @param n Number of arguments.
  * @param format Format string.
  * @param ... Arguments to put in the map.
@@ -627,8 +736,20 @@ raid_error_t raid_write_arrayf(raid_writer_t* w, int n, const char* format, ...)
  */
 raid_error_t raid_write_mapf(raid_writer_t* w, int n, const char* format, ...);
 
+/**
+ * @brief Get a pointer to the writer's generated data.
+ * 
+ * @param w Raid writer instance.
+ * @return Pointer to the writer's generated data.
+ */
 char* raid_writer_data(raid_writer_t* w);
 
+/**
+ * @brief Get the size of the writer's generated data.
+ * 
+ * @param w Raid writer instance.
+ * @return Size of the writer's generated data.
+ */
 size_t raid_writer_size(raid_writer_t* w);
 
 void* raid_alloc(size_t size, const char* name);
