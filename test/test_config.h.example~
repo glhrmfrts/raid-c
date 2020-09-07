@@ -1,4 +1,0 @@
-#define RAID_HOST "HOST"
-#define RAID_PORT "31110"
-
-#define RAID_TEST_CONN
