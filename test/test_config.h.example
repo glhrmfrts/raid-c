@@ -1,0 +1,5 @@
+#define RAID_HOST "HOST"
+#define RAID_PORT "31110"
+
+// Define this if you want to test the connection to the server
+// #define RAID_TEST_CONN

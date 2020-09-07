@@ -104,13 +104,18 @@ void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len, b
 {
     if (!data || !data_len) return;
 
+    if (r->src_data) {
+      raid_dealloc(r->src_data, "reader.src_data");
+    }
+
     // Copy the data because msgpack likes to hold pointers to our memory!!!!1
     r->src_data = raid_alloc(sizeof(char)*data_len, "reader.src_data");
     r->src_data_len = data_len;
     memcpy(r->src_data, data, data_len);
-
+	
     msgpack_zone_clear(r->mempool);
     msgpack_unpack(r->src_data, r->src_data_len, NULL, r->mempool, r->obj);
+    
     if (is_response) {
         r->body = r->nested = find_obj(r->obj, "body");
         r->header = find_obj(r->obj, "header");
@@ -121,6 +126,11 @@ void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len, b
     else {
         r->body = r->nested = r->obj;
     }
+}
+
+bool raid_is_invalid(raid_reader_t* r)
+{
+    return raid_read_type(r) == RAID_INVALID;
 }
 
 bool raid_is_nil(raid_reader_t* r)

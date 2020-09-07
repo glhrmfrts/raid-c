@@ -348,6 +348,13 @@ raid_reader_t* raid_reader_new();
 void raid_reader_delete(raid_reader_t* r);
 
 /**
+ * @brief Check if current reader value is invalid.
+ * 
+ * @return If current reader value is invalid.
+ */
+bool raid_is_invalid(raid_reader_t* r);
+  
+/**
  * @brief Check if current reader value is nil.
  * 
  * @return If current reader value is nil.
