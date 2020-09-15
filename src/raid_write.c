@@ -120,6 +120,12 @@ raid_error_t raid_write_message_without_body(raid_writer_t* w, const char* actio
     return raid_write_message_ex(w, action, false);
 }
 
+raid_error_t raid_write_raw(raid_writer_t* w, const char* data, size_t data_len)
+{
+    msgpack_sbuffer_write(&w->sbuf, data, data_len);
+    return RAID_SUCCESS;
+}
+
 raid_error_t raid_write_nil(raid_writer_t* w)
 {
     msgpack_packer* pk = &w->pk;
@@ -165,6 +171,13 @@ raid_error_t raid_write_string(raid_writer_t* w, const char* str, size_t len)
 {
     msgpack_packer* pk = &w->pk;
     msgpack_pack_str_with_body(pk, str, len);
+    return RAID_SUCCESS;
+}
+
+raid_error_t raid_write_cstring(raid_writer_t* w, const char* str)
+{
+    msgpack_packer* pk = &w->pk;
+    msgpack_pack_str_with_body(pk, str, strlen(str));
     return RAID_SUCCESS;
 }
 

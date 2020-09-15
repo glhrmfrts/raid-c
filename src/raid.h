@@ -647,6 +647,16 @@ raid_error_t raid_write_message_without_body(raid_writer_t* w, const char* actio
 raid_error_t raid_write_object(raid_writer_t* w, const msgpack_object* obj);
 
 /**
+ * @brief Write raw data (non-encoded) in the request body.
+ * 
+ * @param w Raid writer instance.
+ * @param data Raw data.
+ * @param data_len Size of data.
+ * @return Any errors that might occur.
+ */
+raid_error_t raid_write_raw(raid_writer_t* w, const char* data, size_t data_len);
+
+/**
  * @brief Write nil in the request body.
  * 
  * @param w Raid writer instance.
@@ -700,6 +710,15 @@ raid_error_t raid_write_binary(raid_writer_t* w, const char* data, size_t len);
  * @return Any errors that might occur.
  */
 raid_error_t raid_write_string(raid_writer_t* w, const char* str, size_t len);
+
+/**
+ * @brief Write a null-terminated string in the request body.
+ * 
+ * @param w Raid writer instance.
+ * @param str Null-terminated string.
+ * @return Any errors that might occur.
+ */
+raid_error_t raid_write_cstring(raid_writer_t* w, const char* str);
 
 /**
  * @brief Write an array in the request body.
@@ -759,8 +778,21 @@ const char* raid_writer_data(raid_writer_t* w);
  */
 size_t raid_writer_size(raid_writer_t* w);
 
+/**
+ * @brief Helper function to debug/trace memory allocation, equivalent to malloc.
+ * 
+ * @param size Number of bytes to allocate.
+ * @param name Debug name for the allocation.
+ * @return Pointer to allocated memory.
+ */
 void* raid_alloc(size_t size, const char* name);
 
+/**
+ * @brief Helper function to debug/trace memory deallocation, equivalent to free.
+ * 
+ * @param ptr Pointer to memory being free'd.
+ * @param name Debug name for the dellocation.
+ */
 void raid_dealloc(void* ptr, const char* name);
 
 /**
