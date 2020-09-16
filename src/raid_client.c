@@ -16,6 +16,7 @@ typedef struct {
     raid_writer_t response_writer;
 } request_sync_data_t;
 
+#ifdef RAID_DEBUG_REQUESTS
 static void debug_etags(raid_client_t* cl)
 {
     raid_request_t* req = cl->reqs;
@@ -37,6 +38,7 @@ static int debug_count_requests(raid_client_t* cl, const char* etag)
     }
     return i;
 }
+#endif
 
 static void call_before_send_callbacks(raid_client_t* cl, const char* data, size_t data_len)
 {
@@ -86,7 +88,7 @@ static void free_request(raid_request_t* req)
 {
     const char* etag = req->etag;
     raid_dealloc(req, etag);
-    free(etag);
+    free((void*)etag);
 }
 
 static raid_request_t* find_request(raid_client_t* cl, const char* etag)
@@ -200,6 +202,8 @@ static void process_data(raid_client_t* cl, const char* buf, size_t buf_len)
 
 static void sync_request_callback(raid_client_t* cl, raid_reader_t* r, raid_error_t err, void* user_data)
 {
+    (void)cl;
+    
     request_sync_data_t* data = (request_sync_data_t*)user_data;
     if (err == RAID_SUCCESS) {
         // To be safe, copy the data from the reader to our writer
