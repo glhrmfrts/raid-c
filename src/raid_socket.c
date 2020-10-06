@@ -77,7 +77,7 @@ static raid_error_t socket_impl_recv(raid_socket_t* s, char* buf, size_t buf_len
 {
     *out_len = recv(s->handle, buf, buf_len, 0);
     int err = WSAGetLastError();
-    
+
     if (errno == EWOULDBLOCK || errno == EAGAIN || err == WSAETIMEDOUT) {
         return RAID_RECV_TIMEOUT;
     }
@@ -231,7 +231,7 @@ static raid_error_t socket_impl_send(raid_socket_t* s, const char* data, size_t 
         return RAID_NOT_CONNECTED;
     }
 
-    const ssize_t nwrite = send((int)s->handle, data, data_len, 0);
+    const ssize_t nwrite = send((int)s->handle, data, data_len, MSG_NOSIGNAL);
     raid_error_t res = RAID_SUCCESS;
 
     if (is_not_connected_err(errno)) {
@@ -249,6 +249,10 @@ static raid_error_t socket_impl_send(raid_socket_t* s, const char* data, size_t 
 
 static raid_error_t socket_impl_recv(raid_socket_t* s, char* buf, size_t buf_len, int* out_len)
 {
+    if (!raid_socket_connected(s)) {
+        return RAID_NOT_CONNECTED;
+    }
+
     *out_len = recv((int)s->handle, buf, buf_len, 0);
     //printf("%d\n", *out_len);
     if (errno == EWOULDBLOCK || errno == EAGAIN) {

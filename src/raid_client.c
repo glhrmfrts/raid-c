@@ -203,7 +203,7 @@ static void process_data(raid_client_t* cl, const char* buf, size_t buf_len)
 static void sync_request_callback(raid_client_t* cl, raid_reader_t* r, raid_error_t err, void* user_data)
 {
     (void)cl;
-    
+
     request_sync_data_t* data = (request_sync_data_t*)user_data;
     if (err == RAID_SUCCESS) {
         // To be safe, copy the data from the reader to our writer
@@ -305,6 +305,10 @@ static void* raid_recv_loop(void* arg)
         }
         buf_len = 0;
 
+        // TODO: discover remaining unknown errors in socket_recv
+        if (err == RAID_SUCCESS) {
+            err = RAID_RECV_TIMEOUT;
+        }
         check_requests_for_timeout_locked(cl, err);
     }
 
@@ -338,6 +342,7 @@ raid_error_t raid_init(raid_client_t* cl, const char* host, const char* port)
     cl->host = strdup(host);
     cl->port = strdup(port);
     cl->socket.handle = -1;
+    cl->request_timeout_secs = RAID_TIMEOUT_DEFAULT_SECS;
 
     int err = pthread_mutex_init(&cl->reqs_mutex, NULL);
     if (err != 0) {
@@ -405,6 +410,11 @@ void raid_add_msg_recv_callback(raid_client_t* cl, raid_msg_recv_callback_t cb, 
     LIST_APPEND(cl->callbacks, data);
 }
 
+void raid_set_request_timeout(raid_client_t* cl, int64_t timeout_secs)
+{
+    cl->request_timeout_secs = timeout_secs;
+}
+
 raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_response_callback_t cb, void* user_data)
 {
     if (!raid_socket_connected(&cl->socket)) {
@@ -412,7 +422,7 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
     }
 
     pthread_mutex_lock(&cl->reqs_mutex);
-    
+
     // Send data to socket
     int32_t size = w->sbuf.size;
     char data_size[4];
@@ -437,7 +447,7 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
         raid_request_t* req = raid_alloc(sizeof(raid_request_t), w->etag);
         memset(req, 0, sizeof(raid_request_t));
         req->created_at = (int64_t)time(NULL);
-        req->timeout_secs = RAID_TIMEOUT_DEFAULT_SECS;
+        req->timeout_secs = cl->request_timeout_secs;
         req->etag = strdup(w->etag);
         req->callback = cb;
         req->callback_user_data = user_data;
@@ -476,7 +486,7 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
     if (res == RAID_SUCCESS) {
         raid_reader_set_data(out, data->response_writer.sbuf.data, data->response_writer.sbuf.size, true);
     }
-    
+
     request_sync_destroy(data);
     free(data);
     return res;
