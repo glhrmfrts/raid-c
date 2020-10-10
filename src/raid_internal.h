@@ -23,6 +23,16 @@
         item->next->prev = item->prev; \
     }
 
+#define LIST_NODE_MEMBERS(type) \
+    type* next; \
+    type* prev; \
+
+#define LIST_FOREACH(type, item, list) for (type* item = list; item; item = item->next)
+
+#define ATOMIC_READ(value) (__sync_fetch_and_add((volatile unsigned int*)&value, 0))
+
+#define ATOMIC_ADD(value, add_value) (__sync_fetch_and_add((volatile unsigned int*)&value, add_value))
+
 
 void raid_reader_set_data(raid_reader_t* r, const char* data, size_t data_len, bool is_response);
 

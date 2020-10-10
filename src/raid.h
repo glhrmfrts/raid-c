@@ -163,6 +163,65 @@ typedef struct raid_request {
     struct raid_request* prev;
 } raid_request_t;
 
+/**
+ * A Raid request group, do multiple requests at once, e.g.:
+ * 
+ * @code
+raid_request_group_t* group = raid_request_group_new(client);
+for (int i = 0; i < 10; i++) {
+    raid_request_group_entry_t* entry = raid_request_group_add(group);
+
+    // Write your request into entry->writer.
+    write_the_request(&entry->writer, i);
+
+    // Set the response callback into entry->response_callback (optional).
+    entry->response_callback = my_response_callback;
+
+    // Set your user data (optional).
+    entry->user_data = (void*)i;
+}
+
+// Send the requests and wait until they're all done.
+raid_error_t err = raid_request_group_send_and_wait(group);
+
+// Read all the responses and errors to an array.
+raid_reader_t* response_array = raid_reader_new();
+raid_error_t* errors = NULL;
+raid_request_group_read_to_array(group, response_array, &errors);
+
+// Do something with the responses...
+
+// Cleanup
+free(errors);
+raid_reader_delete(response_array);
+raid_request_group_delete(group);
+ * @endcode
+ */
+typedef struct raid_request_group
+{
+    raid_client_t* raid;
+    size_t num_entries;
+    size_t num_entries_done;
+    pthread_cond_t entries_cond;
+    pthread_mutex_t entries_mutex;
+    raid_request_group_entry_t* entries;
+} raid_request_group_t;
+
+/**
+ * A Raid request group entry.
+ */
+typedef struct raid_request_group_entry
+{
+    struct raid_request_group_entry* prev;
+    struct raid_request_group_entry* next;
+    raid_writer_t writer;
+    raid_reader_t reader;
+    raid_response_callback_t response_callback;
+    raid_error_t error;
+    raid_request_group_t* group;
+    void* user_data;
+} raid_request_group_entry_t;
+
 typedef struct raid_callback {
     raid_callback_type_t type;
     void* user_data;
@@ -786,6 +845,75 @@ const char* raid_writer_data(raid_writer_t* w);
  * @return Size of the writer's generated data.
  */
 size_t raid_writer_size(raid_writer_t* w);
+
+/**
+ * @brief Initialize a request group.
+ * 
+ * @param g The request group.
+ * @param raid A Raid client instance.
+ */
+void raid_request_group_init(raid_request_group_t* g, raid_client_t* raid);
+
+/**
+ * @brief Destroy a request group.
+ * 
+ * @param g The request group.
+ */
+void raid_request_group_destroy(raid_request_group_t* g);
+
+/**
+ * @brief Allocate and initialize a request group.
+ * 
+ * @param raid A Raid client instance.
+ * @return The request group.
+ */
+raid_request_group_t* raid_request_group_new(raid_client_t* raid);
+
+/**
+ * @brief De-allocate and destroy a request group.
+ * 
+ * @param g The request group.
+ */
+void raid_request_group_delete(raid_request_group_t* g);
+
+/**
+ * @brief Adds an entry to the request group.
+ * 
+ * @param g The request group.
+ * @return The new entry.
+ */
+raid_request_group_entry_t* raid_request_group_add(raid_request_group_t* g);
+
+/**
+ * @brief Send all the requests in this group.
+ * 
+ * @param g The request group.
+ * @return Any errors that might occur sending the requests.
+ */
+raid_error_t raid_request_group_send(raid_request_group_t* g);
+
+/**
+ * @brief Wait until all the requests in this group are done.
+ * 
+ * @param g The request group.
+ */
+void raid_request_group_wait(raid_request_group_t* g);
+
+/**
+ * @brief Send all the requests in this group and wait until they are done.
+ * 
+ * @param g The request group.
+ * @return Any errors that might occur sending the requests.
+ */
+raid_error_t raid_request_group_send_and_wait(raid_request_group_t* g);
+
+/**
+ * @brief Read the responses from each request and put them into an array in @p out_reader
+ * 
+ * @param g The request group.
+ * @param [out] out_reader The reader to receive the array with the responses.
+ */
+void raid_request_group_read_to_array(raid_request_group_t* g, raid_reader_t* out_reader);
 
 /**
  * @brief Helper function to debug/trace memory allocation, equivalent to malloc.

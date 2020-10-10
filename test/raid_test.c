@@ -209,6 +209,34 @@ bool test_read_garbage(raid_client_t* raid)
   return false;
 }
 
+bool test_request_group(raid_client_t* raid)
+{
+  raid_request_group_t* group = raid_request_group_new(raid);
+  for (int i = 0; i < 2; i++) {
+    raid_request_group_entry_t* entry = raid_request_group_add(group);
+    raid_write_message(&entry->writer, "hcs.exam.get");
+
+    const char* uid = "";
+    const char* key = NULL;
+    if (i == 0) {
+      key = "physician";
+    }
+    else {
+      key = "patient";
+    }
+    raid_write_mapf(&entry->writer, "'_' %s 'k' %s", uid, key);
+  }
+
+  raid_error_t err;
+  TEST_CALL(err, raid_request_group_send_and_wait(group));
+
+  raid_reader_t* r = raid_reader_new();
+  raid_request_group_read_to_array(group, r, NULL);
+  
+  raid_reader_delete(r);
+  raid_request_group_delete(group);
+}
+
 int main(int argc, char** argv)
 {
   raid_client_t raid;
