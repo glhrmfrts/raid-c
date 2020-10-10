@@ -67,6 +67,7 @@ typedef int64_t raid_int_t;
 typedef double raid_float_t;
 
 struct raid_client;
+struct raid_request_group_entry;
 
 typedef enum {
     RAID_SUCCESS,
@@ -165,7 +166,7 @@ typedef struct raid_request {
 
 /**
  * A Raid request group, do multiple requests at once, e.g.:
- * 
+ *
  * @code
 raid_request_group_t* group = raid_request_group_new(client);
 for (int i = 0; i < 10; i++) {
@@ -199,12 +200,12 @@ raid_request_group_delete(group);
  */
 typedef struct raid_request_group
 {
-    raid_client_t* raid;
+    struct raid_client* raid;
     size_t num_entries;
     size_t num_entries_done;
     pthread_cond_t entries_cond;
     pthread_mutex_t entries_mutex;
-    raid_request_group_entry_t* entries;
+    struct raid_request_group_entry* entries;
 } raid_request_group_t;
 
 /**
@@ -848,7 +849,7 @@ size_t raid_writer_size(raid_writer_t* w);
 
 /**
  * @brief Initialize a request group.
- * 
+ *
  * @param g The request group.
  * @param raid A Raid client instance.
  */
@@ -856,14 +857,14 @@ void raid_request_group_init(raid_request_group_t* g, raid_client_t* raid);
 
 /**
  * @brief Destroy a request group.
- * 
+ *
  * @param g The request group.
  */
 void raid_request_group_destroy(raid_request_group_t* g);
 
 /**
  * @brief Allocate and initialize a request group.
- * 
+ *
  * @param raid A Raid client instance.
  * @return The request group.
  */
@@ -871,14 +872,14 @@ raid_request_group_t* raid_request_group_new(raid_client_t* raid);
 
 /**
  * @brief De-allocate and destroy a request group.
- * 
+ *
  * @param g The request group.
  */
 void raid_request_group_delete(raid_request_group_t* g);
 
 /**
  * @brief Adds an entry to the request group.
- * 
+ *
  * @param g The request group.
  * @return The new entry.
  */
@@ -886,7 +887,7 @@ raid_request_group_entry_t* raid_request_group_add(raid_request_group_t* g);
 
 /**
  * @brief Send all the requests in this group.
- * 
+ *
  * @param g The request group.
  * @return Any errors that might occur sending the requests.
  */
@@ -894,14 +895,14 @@ raid_error_t raid_request_group_send(raid_request_group_t* g);
 
 /**
  * @brief Wait until all the requests in this group are done.
- * 
+ *
  * @param g The request group.
  */
 void raid_request_group_wait(raid_request_group_t* g);
 
 /**
  * @brief Send all the requests in this group and wait until they are done.
- * 
+ *
  * @param g The request group.
  * @return Any errors that might occur sending the requests.
  */
@@ -909,11 +910,12 @@ raid_error_t raid_request_group_send_and_wait(raid_request_group_t* g);
 
 /**
  * @brief Read the responses from each request and put them into an array in @p out_reader
- * 
+ *
  * @param g The request group.
  * @param [out] out_reader The reader to receive the array with the responses.
+ * @param [out] out_errs Pointer to array of errors to receive response errors (optional). The caller owns the array.
  */
-void raid_request_group_read_to_array(raid_request_group_t* g, raid_reader_t* out_reader);
+void raid_request_group_read_to_array(raid_request_group_t* g, raid_reader_t* out_reader, raid_error_t** out_errs);
 
 /**
  * @brief Helper function to debug/trace memory allocation, equivalent to malloc.

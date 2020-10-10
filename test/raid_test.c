@@ -1,5 +1,6 @@
 #include "test_config.h"
 #include <raid.h>
+#include <raid_internal.h>
 
 #define TEST_ASSERT(cond, message) \
     if (!(cond)) { fprintf(stderr, "Assertion failed: \"%s\" - %s\n", #cond, message); return 1; }
@@ -34,7 +35,7 @@ bool test_conn(raid_client_t* raid)
 bool test_write_msgpack(raid_client_t* raid)
 {
   const char* text = "TEXT";
-  
+
   raid_writer_t w;
   raid_writer_init(&w, raid);
 
@@ -63,7 +64,7 @@ bool test_write_msgpack(raid_client_t* raid)
     msgpack_pack_int64(&pk, 42);
     msgpack_pack_float(&pk, 6.9);
     msgpack_pack_str(&pk, strlen(text)); msgpack_pack_str_body(&pk, text, strlen(text));
-    
+
     msgpack_pack_map(&pk, 2);
     msgpack_pack_str(&pk, strlen("number")); msgpack_pack_str_body(&pk, "number", strlen("number"));
     msgpack_pack_int64(&pk, 1234);
@@ -87,7 +88,7 @@ bool test_write_msgpack(raid_client_t* raid)
       return true;
     }
   }
-  
+
   raid_writer_destroy(&w);
   return false;
 }
@@ -95,7 +96,7 @@ bool test_write_msgpack(raid_client_t* raid)
 bool test_write_read(raid_client_t* raid)
 {
   const char* text = "TEXT";
-  
+
   raid_writer_t w;
   raid_writer_init(&w, raid);
 
@@ -126,18 +127,18 @@ bool test_write_read(raid_client_t* raid)
     TEST_ASSERT(raid_read_bool(&r, &b), "should be able to read bool");
     TEST_ASSERT(b, "Array[1] should be true");
     raid_read_next(&r);
-    
+
     int64_t i = false;
     TEST_ASSERT(raid_is_int(&r), "Array[2] should be int");
     TEST_ASSERT(raid_read_int(&r, &i), "should be able to read int");
     TEST_ASSERT(i == 42, "Array[2] should be 42");
     raid_read_next(&r);
-    
+
     double f = 0.0;
     TEST_ASSERT(raid_is_float(&r), "Array[3] should be float");
     TEST_ASSERT(raid_read_float(&r, &f), "should be able to read float");
     raid_read_next(&r);
-    
+
     char* cstr = NULL;
     TEST_ASSERT(raid_is_string(&r), "Array[4] should be string");
     TEST_ASSERT(raid_read_cstring(&r, &cstr), "should be able to read string");
@@ -150,7 +151,7 @@ bool test_write_read(raid_client_t* raid)
     TEST_ASSERT(raid_read_begin_map(&r, &map_size), "should be able to read map size");
     TEST_ASSERT(map_size == 2, "map size should be 2");
     for (size_t i = 0; i < map_size; i++) {
-      const char* key = NULL;
+      char* key = NULL;
       TEST_ASSERT(raid_read_map_key_cstring(&r, &key), "should be able to read map key");
       if (!strcmp(key, "number")) {
 	int64_t val = 0;
@@ -168,17 +169,17 @@ bool test_write_read(raid_client_t* raid)
       else {
 	return true;
       }
-	
+
       raid_read_next(&r);
     }
     raid_read_end_map(&r);
     raid_read_next(&r);
-      
+
     raid_read_end_array(&r);
-    
+
     raid_reader_destroy(&r);
   }
-  
+
   raid_writer_destroy(&w);
   return false;
 }
@@ -186,13 +187,13 @@ bool test_write_read(raid_client_t* raid)
 bool test_read_garbage(raid_client_t* raid)
 {
   raid_reader_t r;
-  char random_data[512];
+  char random_data[256];
   raid_reader_init(&r);
 
   TEST_ASSERT(raid_read_type(&r) == RAID_INVALID, "type should be invalid without data");
-  
+
   for (size_t i = 0; i < sizeof(random_data); i++) {
-    random_data[i] = (char)(i++);
+    random_data[i] = (char)(i % 256);
   }
   raid_reader_set_data(&r, random_data, sizeof(random_data), false);
 
@@ -204,7 +205,7 @@ bool test_read_garbage(raid_client_t* raid)
   }
   raid_reader_set_data(&r, random_data, sizeof(random_data), false);
   TEST_ASSERT(raid_read_type(&r) == RAID_INT, "type should be an int");
-  
+
   raid_reader_destroy(&r);
   return false;
 }
@@ -224,7 +225,7 @@ bool test_request_group(raid_client_t* raid)
     else {
       key = "patient";
     }
-    raid_write_mapf(&entry->writer, "'_' %s 'k' %s", uid, key);
+    raid_write_mapf(&entry->writer, 2, "'_' %s 'k' %s", uid, key);
   }
 
   raid_error_t err;
@@ -232,9 +233,37 @@ bool test_request_group(raid_client_t* raid)
 
   raid_reader_t* r = raid_reader_new();
   raid_request_group_read_to_array(group, r, NULL);
-  
+
+  size_t arr_size = 0;
+  if (raid_read_begin_array(r, &arr_size)) {
+    TEST_ASSERT(arr_size == 2, "Should read 2 responses");
+    raid_read_end_array(r);
+  }
+
   raid_reader_delete(r);
   raid_request_group_delete(group);
+
+  return false;
+}
+
+static void before_send_callback(raid_client_t* cl, const char* data, size_t data_len, void* ud)
+{
+    raid_reader_t r;
+    raid_reader_init_with_data(&r, data, data_len);
+    fprintf(stdout, "send: ");
+    msgpack_object_print(stdout, *r.obj);
+    fprintf(stdout, "\n");
+    raid_reader_destroy(&r);
+}
+
+static void after_recv_callback(raid_client_t* cl, const char* data, size_t data_len, void* ud)
+{
+    raid_reader_t r;
+    raid_reader_init_with_data(&r, data, data_len);
+    fprintf(stdout, "recv: ");
+    msgpack_object_print(stdout, *r.obj);
+    fprintf(stdout, "\n");
+    raid_reader_destroy(&r);
 }
 
 int main(int argc, char** argv)
@@ -250,11 +279,14 @@ int main(int argc, char** argv)
 
 #ifdef RAID_TEST_CONN
   TEST_RUN(&raid, test_conn);
+  raid_add_before_send_callback(&raid, before_send_callback, NULL);
+  raid_add_after_recv_callback(&raid, after_recv_callback, NULL);
 #endif
 
   TEST_RUN(&raid, test_write_msgpack);
   TEST_RUN(&raid, test_write_read);
   TEST_RUN(&raid, test_read_garbage);
+  TEST_RUN(&raid, test_request_group);
 
   raid_destroy(&raid);
   return EXIT_SUCCESS;

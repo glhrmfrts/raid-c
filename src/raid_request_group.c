@@ -43,6 +43,7 @@ raid_request_group_entry_t* raid_request_group_add(raid_request_group_t* g)
     raid_writer_init(&entry->writer, g->raid);
     raid_reader_init(&entry->reader);
     LIST_APPEND(g->entries, entry);
+    g->num_entries++;
     return entry;
 }
 
@@ -59,6 +60,7 @@ static void request_group_response_callback(raid_client_t* cl, raid_reader_t* r,
 
     // Notify this request entry is done.
     pthread_mutex_lock(&entry->group->entries_mutex);
+    entry->group->num_entries_done += 1;
     pthread_cond_signal(&entry->group->entries_cond);
     pthread_mutex_unlock(&entry->group->entries_mutex);
 }
@@ -76,12 +78,11 @@ raid_error_t raid_request_group_send(raid_request_group_t* g)
 
 void raid_request_group_wait(raid_request_group_t* g)
 {
+    pthread_mutex_lock(&g->entries_mutex);
     while (g->num_entries_done < g->num_entries) {
-        pthread_mutex_lock(&g->entries_mutex);
         pthread_cond_wait(&g->entries_cond, &g->entries_mutex);
-        g->num_entries_done += 1;
-        pthread_mutex_unlock(&g->entries_mutex);
     }
+    pthread_mutex_unlock(&g->entries_mutex);
 }
 
 raid_error_t raid_request_group_send_and_wait(raid_request_group_t* g)
@@ -112,7 +113,7 @@ void raid_request_group_read_to_array(raid_request_group_t* g, raid_reader_t* ou
             raid_write_nil(&aw);
         }
         if (out_errs) {
-            out_errs[i] = entry->error;
+            (*out_errs)[i] = entry->error;
         }
         i++;
     }
