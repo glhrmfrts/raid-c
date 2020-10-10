@@ -837,7 +837,7 @@ raid_error_t raid_write_mapf(raid_writer_t* w, int n, const char* format, ...);
  * @param w Raid writer instance.
  * @return Pointer to the writer's generated data.
  */
-const char* raid_writer_data(raid_writer_t* w);
+const char* raid_writer_data(const raid_writer_t* w);
 
 /**
  * @brief Get the size of the writer's generated data.
@@ -845,7 +845,7 @@ const char* raid_writer_data(raid_writer_t* w);
  * @param w Raid writer instance.
  * @return Size of the writer's generated data.
  */
-size_t raid_writer_size(raid_writer_t* w);
+size_t raid_writer_size(const raid_writer_t* w);
 
 /**
  * @brief Initialize a request group.

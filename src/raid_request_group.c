@@ -1,6 +1,9 @@
 #include "raid.h"
 #include "raid_internal.h"
 
+LIST_DEFINE_BEGIN(raid_request_group_entry_t)
+LIST_DEFINE_NEXT(raid_request_group_entry_t)
+
 void raid_request_group_init(raid_request_group_t* g, raid_client_t* raid)
 {
     memset(g, 0, sizeof(raid_request_group_t));

@@ -27,7 +27,19 @@
     type* next; \
     type* prev; \
 
-#define LIST_FOREACH(type, item, list) for (type* item = list; item; item = item->next)
+#define LIST_FOREACH(type, item, list) for (type* item = type##_list_begin(list); item; item = type##_list_next(item))
+
+#define LIST_DEFINE_BEGIN(type) \
+static type* type##_list_begin(type* head) \
+{ \
+    while (head->next) { \
+        head = head->next; \
+    } \
+    return head; \
+}
+
+#define LIST_DEFINE_NEXT(type) static type* type##_list_next(type* head) { return head->prev; }
+
 
 #define ATOMIC_READ(value) (__sync_fetch_and_add((volatile unsigned int*)&value, 0))
 

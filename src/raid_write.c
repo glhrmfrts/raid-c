@@ -33,7 +33,7 @@ static raid_error_t raid_write_message_ex(raid_writer_t* w, const char* action, 
         if (w->etag) {
             free(w->etag);
         }
-        
+
         pthread_mutex_lock(&w->cl->reqs_mutex);
         w->etag = raid_gen_etag(w->cl);
         pthread_mutex_unlock(&w->cl->reqs_mutex);
@@ -95,17 +95,17 @@ raid_writer_t* raid_writer_new(raid_client_t* cl)
 void raid_writer_delete(raid_writer_t* w)
 {
     if (w == NULL) return;
-    
+
     raid_writer_destroy(w);
     free(w);
 }
 
-const char* raid_writer_data(raid_writer_t* w)
+const char* raid_writer_data(const raid_writer_t* w)
 {
     return w->sbuf.data;
 }
 
-size_t raid_writer_size(raid_writer_t* w)
+size_t raid_writer_size(const raid_writer_t* w)
 {
     return w->sbuf.size;
 }
