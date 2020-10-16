@@ -354,23 +354,33 @@ raid_error_t raid_init(raid_client_t* cl, const char* host, const char* port)
 
 raid_error_t raid_connect(raid_client_t* cl)
 {
-    raid_error_t err = raid_socket_connect(&cl->socket, cl->host, cl->port);
-    cl->recv_thread_active = false;
+    raid_error_t result = RAID_UNKNOWN;
+    pthread_mutex_lock(&cl->reqs_mutex);
 
-    if (err == RAID_SUCCESS) {
-        // Increment connection id
-        __sync_fetch_and_add((volatile unsigned int*)&cl->connection_id, 1);
+    if (raid_socket_connected(&cl->socket)) {
+        result = RAID_NOT_CONNECTED;
+    }
+    else {
+        result = raid_socket_connect(&cl->socket, cl->host, cl->port);
+        cl->recv_thread_active = false;
+        if (result == RAID_SUCCESS) {
+            // Increment connection id
+            __sync_fetch_and_add((volatile unsigned int*)&cl->connection_id, 1);
 
-        int res = pthread_create(&cl->recv_thread, NULL, &raid_recv_loop, (void*)cl);
-        if (res != 0) {
-            fprintf(stderr, "Cannot create thread: %s\n", strerror(res));
-            return RAID_UNKNOWN;
-        }
-        else {
-            cl->recv_thread_active = true;
+            // Create receiver thread
+            int err = pthread_create(&cl->recv_thread, NULL, &raid_recv_loop, (void*)cl);
+            if (err != 0) {
+                fprintf(stderr, "Cannot create thread: %s\n", strerror(err));
+                result = RAID_UNKNOWN;
+            }
+            else {
+                cl->recv_thread_active = true;
+            }
         }
     }
-    return err;
+
+    pthread_mutex_unlock(&cl->reqs_mutex);
+    return result;
 }
 
 bool raid_connected(raid_client_t* cl)
@@ -417,45 +427,46 @@ void raid_set_request_timeout(raid_client_t* cl, int64_t timeout_secs)
 
 raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_response_callback_t cb, void* user_data)
 {
-    if (!raid_socket_connected(&cl->socket)) {
-        return RAID_NOT_CONNECTED;
-    }
-
+    raid_error_t result = RAID_SUCCESS;
     pthread_mutex_lock(&cl->reqs_mutex);
 
-    // Send data to socket
-    int32_t size = w->sbuf.size;
-    char data_size[4];
-    data_size[0] = (size >> 24) & 0xFF;
-    data_size[1] = (size >> 16) & 0xFF;
-    data_size[2] = (size >> 8) & 0xFF;
-    data_size[3] = size & 0xFF;
+    if (raid_socket_connected(&cl->socket)) {
+        // Send data to socket
+        int32_t size = w->sbuf.size;
+        char data_size[4];
+        data_size[0] = (size >> 24) & 0xFF;
+        data_size[1] = (size >> 16) & 0xFF;
+        data_size[2] = (size >> 8) & 0xFF;
+        data_size[3] = size & 0xFF;
 
-    call_before_send_callbacks(cl, w->sbuf.data, size);
+        call_before_send_callbacks(cl, w->sbuf.data, size);
 
-    raid_error_t result = raid_socket_send(&cl->socket, data_size, sizeof(data_size));
-    if (result == RAID_SUCCESS) {
-        result = raid_socket_send(&cl->socket, w->sbuf.data, size);
+        result = raid_socket_send(&cl->socket, data_size, sizeof(data_size));
+        if (result == RAID_SUCCESS) {
+            result = raid_socket_send(&cl->socket, w->sbuf.data, size);
+        }
+
+        if (result == RAID_NOT_CONNECTED) {
+            raid_socket_close(&cl->socket);
+            detach_recv_thread(cl);
+        }
+        else if (result == RAID_SUCCESS) {
+            // Append a request to the list
+            raid_request_t* req = raid_alloc(sizeof(raid_request_t), w->etag);
+            memset(req, 0, sizeof(raid_request_t));
+            req->created_at = (int64_t)time(NULL);
+            req->timeout_secs = cl->request_timeout_secs;
+            req->etag = strdup(w->etag);
+            req->callback = cb;
+            req->callback_user_data = user_data;
+            LIST_APPEND(cl->reqs, req);
+        }
     }
-
-    if (result == RAID_NOT_CONNECTED) {
-        raid_socket_close(&cl->socket);
-        detach_recv_thread(cl);
-    }
-    else if (result == RAID_SUCCESS) {
-        // Append a request to the list
-        raid_request_t* req = raid_alloc(sizeof(raid_request_t), w->etag);
-        memset(req, 0, sizeof(raid_request_t));
-        req->created_at = (int64_t)time(NULL);
-        req->timeout_secs = cl->request_timeout_secs;
-        req->etag = strdup(w->etag);
-        req->callback = cb;
-        req->callback_user_data = user_data;
-        LIST_APPEND(cl->reqs, req);
+    else {
+        result = RAID_NOT_CONNECTED;
     }
 
     pthread_mutex_unlock(&cl->reqs_mutex);
-
     return result;
 }
 
@@ -494,7 +505,10 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
 
 raid_error_t raid_disconnect(raid_client_t* cl)
 {
+    pthread_mutex_lock(&cl->reqs_mutex);
     raid_error_t err = raid_socket_close(&cl->socket);
+    pthread_mutex_unlock(&cl->reqs_mutex);
+
     join_recv_thread(cl);
     return err;
 }
@@ -502,7 +516,9 @@ raid_error_t raid_disconnect(raid_client_t* cl)
 void raid_destroy(raid_client_t* cl)
 {
     if (raid_socket_connected(&cl->socket)) {
-        raid_socket_close(&cl->socket);
+        pthread_mutex_lock(&cl->reqs_mutex);
+        (void)raid_socket_close(&cl->socket);
+        pthread_mutex_unlock(&cl->reqs_mutex);
     }
 
     join_recv_thread(cl);
