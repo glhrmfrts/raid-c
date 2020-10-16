@@ -358,6 +358,7 @@ raid_error_t raid_connect(raid_client_t* cl)
     pthread_mutex_lock(&cl->reqs_mutex);
 
     if (raid_socket_connected(&cl->socket)) {
+        // TODO: change this shameless re-use of error code to something more meaningful.
         result = RAID_NOT_CONNECTED;
     }
     else {
