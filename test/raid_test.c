@@ -246,6 +246,41 @@ bool test_request_group(raid_client_t* raid)
   return false;
 }
 
+
+static void cancel_request_callback(raid_client_t* cl, raid_reader_t* r, raid_error_t err, void* ud)
+{
+  TEST_ASSERT(err == RAID_CANCELED, "Error code should be RAID_CANCELED");
+}
+
+bool test_cancel_request(raid_client_t* raid)
+{
+  raid_writer_t w;
+  raid_writer_init(&w, raid);
+  raid_write_message(&w, "hcs.operator.announce");
+  raid_write_mapf(&w, 2,"'_' %s 'name' %s", "ASDFGHJK", "operator name");
+
+  raid_error_t err;
+  TEST_CALL(err, raid_request_async(raid, &w, cancel_request_callback, NULL));
+
+  raid_cancel_request(raid, raid_writer_etag(&w));
+
+  TEST_ASSERT(raid_num_requests(raid) == 0, "Should not have any pending requests");
+
+  raid_writer_destroy(&w);
+}
+
+bool test_writer_etag(raid_client_t* raid)
+{
+  raid_writer_t w;
+  raid_writer_init(&w, raid);
+  raid_write_message(&w, "hcs.operator.announce");
+  raid_write_mapf(&w, 2,"'_' %s 'name' %s", "ASDFGHJK", "operator name");
+
+  TEST_ASSERT(raid_writer_etag(&w) != NULL, "Should have an etag");
+
+  raid_writer_destroy(&w);
+}
+
 static void before_send_callback(raid_client_t* cl, const char* data, size_t data_len, void* ud)
 {
     raid_reader_t r;
@@ -279,6 +314,7 @@ int main(int argc, char** argv)
 
 #ifdef RAID_TEST_CONN
   TEST_RUN(&raid, test_conn);
+  TEST_RUN(&raid, test_cancel_request);
   raid_add_before_send_callback(&raid, before_send_callback, NULL);
   raid_add_after_recv_callback(&raid, after_recv_callback, NULL);
 #endif
@@ -287,6 +323,7 @@ int main(int argc, char** argv)
   TEST_RUN(&raid, test_write_read);
   TEST_RUN(&raid, test_read_garbage);
   TEST_RUN(&raid, test_request_group);
+  TEST_RUN(&raid, test_writer_etag);
 
   raid_destroy(&raid);
   return EXIT_SUCCESS;

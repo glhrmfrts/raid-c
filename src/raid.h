@@ -76,9 +76,11 @@ typedef enum {
     RAID_SOCKET_ERROR,
     RAID_CONNECT_ERROR,
     RAID_RECV_TIMEOUT,
+    RAID_ALREADY_CONNECTED,
     RAID_NOT_CONNECTED,
     RAID_SHUTDOWN_ERROR,
     RAID_CLOSE_ERROR,
+    RAID_CANCELED,
     RAID_UNKNOWN,
 } raid_error_t;
 
@@ -351,6 +353,19 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
  * @return Any errors that might occur.
  */
 raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader_t* r);
+
+/**
+ * @brief Cancel a request that has been previously sent with the given etag, if any.
+ * 
+ * The request callback will be called with a RAID_CANCELED error code and a NULL reader.
+ * If the server still responds to this request, the response will simply be ignored.
+ * 
+ * You can get the request's etag with @ref raid_writer_etag.
+ * 
+ * @param cl Raid client instance.
+ * @param etag The request etag.
+ */
+void raid_cancel_request(raid_client_t* cl, const char* etag);
 
 /**
  * @brief Close the connection, making subsequent calls invalid.
@@ -830,6 +845,15 @@ raid_error_t raid_write_arrayf(raid_writer_t* w, int n, const char* format, ...)
  * @return Any errors that might occur.
  */
 raid_error_t raid_write_mapf(raid_writer_t* w, int n, const char* format, ...);
+
+/**
+ * @brief Get the etag of the request this writer contains. In other words, @ref raid_write_message must
+ * have been previously called. If not, this function will return NULL.
+ * 
+ * @param w Raid writer instance.
+ * @return The request's etag or NULL.
+ */
+const char* raid_writer_etag(const raid_writer_t* w);
 
 /**
  * @brief Get a pointer to the writer's generated data.

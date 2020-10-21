@@ -70,13 +70,21 @@ static void request_group_response_callback(raid_client_t* cl, raid_reader_t* r,
 
 raid_error_t raid_request_group_send(raid_request_group_t* g)
 {
+    raid_error_t result = RAID_SUCCESS;
     LIST_FOREACH(raid_request_group_entry_t, entry, g->entries) {
-        raid_error_t err = raid_request_async(g->raid, &entry->writer, request_group_response_callback, (void*)entry);
-        if (err != RAID_SUCCESS) {
-            return err;
+        result = raid_request_async(g->raid, &entry->writer, request_group_response_callback, (void*)entry);
+        if (result != RAID_SUCCESS) {
+            break;
         }
     }
-    return RAID_SUCCESS;
+    if (result != RAID_SUCCESS) {
+        // If an error occurs sending any of the requests, cancel the entire group.
+        LIST_FOREACH(raid_request_group_entry_t, entry, g->entries) {
+            raid_cancel_request(g->raid, entry->writer.etag);
+        }
+        g->num_entries_done = g->num_entries;
+    }
+    return result;
 }
 
 void raid_request_group_wait(raid_request_group_t* g)

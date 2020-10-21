@@ -358,8 +358,7 @@ raid_error_t raid_connect(raid_client_t* cl)
     pthread_mutex_lock(&cl->reqs_mutex);
 
     if (raid_socket_connected(&cl->socket)) {
-        // TODO: change this shameless re-use of error code to something more meaningful.
-        result = RAID_NOT_CONNECTED;
+        result = RAID_ALREADY_CONNECTED;
     }
     else {
         result = raid_socket_connect(&cl->socket, cl->host, cl->port);
@@ -502,6 +501,22 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
     request_sync_destroy(data);
     free(data);
     return res;
+}
+
+void raid_cancel_request(raid_client_t* cl, const char* etag)
+{
+    pthread_mutex_lock(&cl->reqs_mutex);
+    raid_request_t* req = cl->reqs;
+    while (req) {
+        raid_request_t* next_req = req->next;
+        if (!strcmp(etag, req->etag)) {
+            req->callback(cl, NULL, RAID_UNKNOWN, req->callback_user_data);
+            LIST_REMOVE(cl->reqs, req);
+            free_request(req);
+        }
+        req = next_req;
+    }
+    pthread_mutex_unlock(&cl->reqs_mutex);
 }
 
 raid_error_t raid_disconnect(raid_client_t* cl)
