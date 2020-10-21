@@ -246,6 +246,32 @@ bool test_request_group(raid_client_t* raid)
   return false;
 }
 
+bool test_request_group_with_error(raid_client_t* raid)
+{
+  raid_request_group_t* group = raid_request_group_new(raid);
+  for (int i = 0; i < 2; i++) {
+    raid_request_group_entry_t* entry = raid_request_group_add(group);
+    raid_write_message(&entry->writer, "hcs.exam.get");
+
+    const char* uid = "";
+    const char* key = NULL;
+    if (i == 0) {
+      key = "physician";
+    }
+    else {
+      key = "patient";
+    }
+    raid_write_mapf(&entry->writer, 2, "'_' %s 'k' %s", uid, key);
+  }
+
+  TEST_ASSERT(raid_request_group_send_and_wait(group) == RAID_NOT_CONNECTED, "Should not be connected");
+
+  TEST_ASSERT(raid_num_requests(raid) == 0, "Should not have any pending requests");
+
+  raid_request_group_delete(group);
+
+  return false;
+}
 
 static void cancel_request_callback(raid_client_t* cl, raid_reader_t* r, raid_error_t err, void* ud)
 {
@@ -314,16 +340,21 @@ int main(int argc, char** argv)
 
 #ifdef RAID_TEST_CONN
   TEST_RUN(&raid, test_conn);
+  //raid_add_before_send_callback(&raid, before_send_callback, NULL);
+  //raid_add_after_recv_callback(&raid, after_recv_callback, NULL);
+
+  TEST_RUN(&raid, test_request_group);
   TEST_RUN(&raid, test_cancel_request);
-  raid_add_before_send_callback(&raid, before_send_callback, NULL);
-  raid_add_after_recv_callback(&raid, after_recv_callback, NULL);
 #endif
 
   TEST_RUN(&raid, test_write_msgpack);
   TEST_RUN(&raid, test_write_read);
   TEST_RUN(&raid, test_read_garbage);
-  TEST_RUN(&raid, test_request_group);
   TEST_RUN(&raid, test_writer_etag);
+
+  raid_disconnect(&raid);
+
+  TEST_RUN(&raid, test_request_group_with_error);
 
   raid_destroy(&raid);
   return EXIT_SUCCESS;

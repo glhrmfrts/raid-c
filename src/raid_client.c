@@ -118,13 +118,15 @@ static void reply_request(raid_client_t* cl, raid_reader_t* r)
         call_msg_recv_callbacks(cl, r);
     }
     else {
+        pthread_mutex_lock(&cl->reqs_mutex);
+        cl->num_requests--;
+        LIST_REMOVE(cl->reqs, req);
+        pthread_mutex_unlock(&cl->reqs_mutex);
+
         // Fire the request callback.
         req->callback(cl, r, RAID_SUCCESS, req->callback_user_data);
 
-        pthread_mutex_lock(&cl->reqs_mutex);
-        LIST_REMOVE(cl->reqs, req);
         free_request(req);
-        pthread_mutex_unlock(&cl->reqs_mutex);
     }
 }
 
@@ -253,8 +255,10 @@ static void clear_requests_locked(raid_client_t* cl)
         raid_request_t* swap = req;
         req = req->next;
         free_request(swap);
+        cl->num_requests--;
     }
     cl->reqs = NULL;
+    cl->num_requests = 0;
     pthread_mutex_unlock(&cl->reqs_mutex);
 }
 
@@ -272,6 +276,7 @@ static void check_requests_for_timeout_locked(raid_client_t* cl, raid_error_t re
 
             LIST_REMOVE(cl->reqs, req);
             free_request(req);
+            cl->num_requests--;
         }
 
         req = next_req;
@@ -425,6 +430,11 @@ void raid_set_request_timeout(raid_client_t* cl, int64_t timeout_secs)
     cl->request_timeout_secs = timeout_secs;
 }
 
+size_t raid_num_requests(raid_client_t* cl)
+{
+    return cl->num_requests;
+}
+
 raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_response_callback_t cb, void* user_data)
 {
     raid_error_t result = RAID_SUCCESS;
@@ -460,6 +470,7 @@ raid_error_t raid_request_async(raid_client_t* cl, const raid_writer_t* w, raid_
             req->callback = cb;
             req->callback_user_data = user_data;
             LIST_APPEND(cl->reqs, req);
+            cl->num_requests++;
         }
     }
     else {
@@ -509,10 +520,11 @@ void raid_cancel_request(raid_client_t* cl, const char* etag)
     raid_request_t* req = cl->reqs;
     while (req) {
         raid_request_t* next_req = req->next;
-        if (!strcmp(etag, req->etag)) {
-            req->callback(cl, NULL, RAID_UNKNOWN, req->callback_user_data);
+        if (!strncmp(req->etag, etag, strlen(req->etag))) {
+            req->callback(cl, NULL, RAID_CANCELED, req->callback_user_data);
             LIST_REMOVE(cl->reqs, req);
             free_request(req);
+            cl->num_requests--;
         }
         req = next_req;
     }

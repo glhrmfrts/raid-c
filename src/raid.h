@@ -251,6 +251,7 @@ typedef struct raid_client {
     size_t msg_total_size;
     size_t msg_len;
     size_t etag_gen_cnt;
+    size_t num_requests;
     int64_t request_timeout_secs;
     raid_state_t state;
     raid_request_t* reqs;
@@ -334,6 +335,14 @@ void raid_add_msg_recv_callback(raid_client_t* cl, raid_msg_recv_callback_t cb, 
 void raid_set_request_timeout(raid_client_t* cl, int64_t timeout_secs);
 
 /**
+ * @brief Return the number of pending requests from this client.
+ *
+ * @param cl Raid client instance.
+ * @return The number of pending requests.
+ */
+size_t raid_num_requests(raid_client_t* cl);
+
+/**
  * @brief Send a request to the raid server.
  *
  * @param cl Raid client instance.
@@ -356,12 +365,12 @@ raid_error_t raid_request(raid_client_t* cl, const raid_writer_t* w, raid_reader
 
 /**
  * @brief Cancel a request that has been previously sent with the given etag, if any.
- * 
+ *
  * The request callback will be called with a RAID_CANCELED error code and a NULL reader.
  * If the server still responds to this request, the response will simply be ignored.
- * 
+ *
  * You can get the request's etag with @ref raid_writer_etag.
- * 
+ *
  * @param cl Raid client instance.
  * @param etag The request etag.
  */
@@ -849,7 +858,7 @@ raid_error_t raid_write_mapf(raid_writer_t* w, int n, const char* format, ...);
 /**
  * @brief Get the etag of the request this writer contains. In other words, @ref raid_write_message must
  * have been previously called. If not, this function will return NULL.
- * 
+ *
  * @param w Raid writer instance.
  * @return The request's etag or NULL.
  */
