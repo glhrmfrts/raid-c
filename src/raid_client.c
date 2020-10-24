@@ -2,6 +2,11 @@
 #include <ctype.h>
 #include "raid.h"
 #include "raid_internal.h"
+#include ATOMIC_HEADER_FILE
+
+#ifdef _WIN32
+#include <implement.h>
+#endif
 
 #define RAID_TIMEOUT_DEFAULT_SECS (10)
 
@@ -15,6 +20,8 @@ typedef struct {
     raid_error_t err;
     raid_writer_t response_writer;
 } request_sync_data_t;
+
+static ATOMIC_COUNTER_TYPE g_num_clients;
 
 #ifdef RAID_DEBUG_REQUESTS
 static void debug_etags(raid_client_t* cl)
@@ -38,6 +45,30 @@ static int debug_count_requests(raid_client_t* cl, const char* etag)
     }
     return i;
 }
+#endif
+
+#ifdef _WIN32
+
+static void init_global_context()
+{
+    __ptw32_processInitialize();
+}
+
+static void destroy_global_context()
+{
+    __ptw32_processTerminate();
+}
+
+#else
+
+static void init_global_context()
+{
+}
+
+static void destroy_global_context()
+{
+}
+
 #endif
 
 static void call_before_send_callbacks(raid_client_t* cl, const char* data, size_t data_len)
@@ -342,6 +373,11 @@ raid_error_t raid_init(raid_client_t* cl, const char* host, const char* port)
     if (!host || !port)
         return RAID_INVALID_ARGUMENT;
 
+    if (ATOMIC_READ(g_num_clients) == 0) {
+        init_global_context();
+    }
+    ATOMIC_ADD(g_num_clients, 1);
+
     memset(cl, 0, sizeof(raid_client_t));
     cl->state = RAID_STATE_WAIT_MESSAGE;
     cl->host = strdup(host);
@@ -370,7 +406,7 @@ raid_error_t raid_connect(raid_client_t* cl)
         cl->recv_thread_active = false;
         if (result == RAID_SUCCESS) {
             // Increment connection id
-            __sync_fetch_and_add((volatile unsigned int*)&cl->connection_id, 1);
+            ATOMIC_ADD(cl->connection_id, 1);
 
             // Create receiver thread
             int err = pthread_create(&cl->recv_thread, NULL, &raid_recv_loop, (void*)cl);
@@ -395,7 +431,7 @@ bool raid_connected(raid_client_t* cl)
 
 unsigned int raid_connection_id(raid_client_t* cl)
 {
-    return __sync_fetch_and_add((volatile unsigned int*)&cl->connection_id, 0);
+    return ATOMIC_READ(cl->connection_id);
 }
 
 void raid_add_before_send_callback(raid_client_t* cl, raid_before_send_callback_t cb, void* user_data)
@@ -557,5 +593,10 @@ void raid_destroy(raid_client_t* cl)
     }
     if (cl->port) {
         free(cl->port);
+    }
+
+    ATOMIC_SUB(g_num_clients, 1);
+    if (ATOMIC_READ(g_num_clients) == 0) {
+        destroy_global_context();
     }
 }

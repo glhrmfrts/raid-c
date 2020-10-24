@@ -340,8 +340,8 @@ int main(int argc, char** argv)
 
 #ifdef RAID_TEST_CONN
   TEST_RUN(&raid, test_conn);
-  //raid_add_before_send_callback(&raid, before_send_callback, NULL);
-  //raid_add_after_recv_callback(&raid, after_recv_callback, NULL);
+  raid_add_before_send_callback(&raid, before_send_callback, NULL);
+  raid_add_after_recv_callback(&raid, after_recv_callback, NULL);
 
   TEST_RUN(&raid, test_request_group);
   TEST_RUN(&raid, test_cancel_request);

@@ -19,49 +19,127 @@
 #ifdef _WIN32
 #pragma comment(lib, "Ws2_32.lib")
 
-static raid_error_t socket_impl_connect(raid_socket_t* s)
+static bool is_not_connected_err(int val)
 {
-    int ret = 0;
-    int conn_fd;
+    return (
+        val == WSAECONNRESET || val == WSAEINTR
+    );
+}
 
-    static WSADATA wsaData;
-    WSAStartup(MAKEWORD(2, 2), &wsaData);
+static void socket_log_error(const char* op_name)
+{
+    char* err_name = NULL;
+    switch (errno) {
+    case EBADF:
+        err_name = "EBADF";
+        break;
+    case EINVAL:
+        err_name = "EINVAL";
+        break;
+    case ENOTCONN:
+        err_name = "ENOTCONN";
+        break;
+    case ENOTSOCK:
+        err_name = "ENOTSOCK";
+        break;
+    case ENOBUFS:
+        err_name = "ENOBUFS";
+        break;
+    case EINTR:
+        err_name = "EINTR";
+        break;
+    case EIO:
+        err_name = "EIO";
+        break;
+    case ECONNREFUSED:
+        err_name = "ECONNREFUSED";
+        break;
+    case EFAULT:
+        err_name = "EFAULT";
+        break;
+    case ENOMEM:
+        err_name = "ENOMEM";
+        break;
+    case EAGAIN:
+        err_name = "EAGAIN";
+        break;
+    case EISCONN:
+        err_name = "EISCONN";
+        break;
+    case EMSGSIZE:
+        err_name = "EMSGSIZE";
+        break;
+    case EPIPE:
+        err_name = "EPIPE";
+        break;
+    case EOPNOTSUPP:
+        err_name = "EOPNOTSUPP";
+        break;
+    default:
+        err_name = "unknown";
+        break;
+    }
+    if (err_name) {
+        fprintf(stderr, "socket %s failed with error: %s (%d)\n", op_name, err_name, errno);
+    }
+}
+
+static void init_context()
+{
+    static WSADATA wsa_data;
+    WSAStartup(MAKEWORD(2, 2), &wsa_data);
+}
+
+static void destroy_context()
+{
+    WSACleanup();
+}
+
+static raid_error_t socket_impl_connect(raid_socket_t* s, const char* host, const char* port)
+{
+    static bool inited;
+    if (!inited) {
+        init_context();
+        inited = true;
+    }
+
+    int ret = 0;
 
     // Translate the human-readable address to a network binary address.
     struct addrinfo* addr_info = NULL;
-    struct addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
+    struct addrinfo hints = { 0 };
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
 
-    ret = getaddrinfo(s->host, s->port, &hints, &addr_info);
+    ret = getaddrinfo(host, port, &hints, &addr_info);
     if (ret != 0) {
-        fprintf(stderr, "getaddrinfo failed with error: %d", ret);
+        fprintf(stderr, "getaddrinfo failed with error: %d\n", ret);
         return RAID_INVALID_ADDRESS;
     }
 
     // Create the socket.
     s->handle = socket(AF_INET, SOCK_STREAM, 0);
-    if (s->handle == -1) {
-        fprintf(stderr, "error creating socket");
+    if ((int)s->handle == -1) {
+        fprintf(stderr, "error creating socket\n");
         return RAID_SOCKET_ERROR;
     }
 
     // Connect to the first address we found.
     struct sockaddr* server_addr = addr_info->ai_addr;
-    ret = connect(s->handle, server_addr, sizeof(struct sockaddr));
+    ret = connect((int)s->handle, server_addr, sizeof(struct sockaddr));
     if (ret == -1) {
-        fprintf(stderr, "error connecting to: %s", s->host);
+        fprintf(stderr, "error connecting to: %s\n", host);
         freeaddrinfo(addr_info);
         return RAID_CONNECT_ERROR;
     }
 
     // Set the socket recv timeout
     const int kSocketTimeoutSeconds = 10*1000;
-    struct timeval tv;
+    struct timeval tv = { 0 };
     tv.tv_sec = kSocketTimeoutSeconds;
-    setsockopt(s->handle, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    tv.tv_usec = 0;
+    setsockopt((int)s->handle, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
 
     freeaddrinfo(addr_info);
     return RAID_SUCCESS;
@@ -69,8 +147,27 @@ static raid_error_t socket_impl_connect(raid_socket_t* s)
 
 static raid_error_t socket_impl_send(raid_socket_t* s, const char* data, size_t data_len)
 {
-    int nwrite = send(s->handle, data, data_len, 0);
-    return RAID_SUCCESS;
+    //printf("%d %d %d %d\n", data[0], data[1], data[2], data[3]);
+    //printf("%s\n", data);
+    //printf("%d\n", data_len);
+    if (!raid_socket_connected(s)) {
+        return RAID_NOT_CONNECTED;
+    }
+
+    const int nwrite = send((int)s->handle, data, data_len, 0);
+    raid_error_t res = RAID_SUCCESS;
+
+    if (is_not_connected_err(WSAGetLastError())) {
+        res = RAID_NOT_CONNECTED;
+    }
+    else {
+        res = ((size_t)nwrite == data_len) ? RAID_SUCCESS : RAID_UNKNOWN;
+    }
+
+    if (res != RAID_SUCCESS) {
+        socket_log_error("send");
+    }
+    return res;
 }
 
 static raid_error_t socket_impl_recv(raid_socket_t* s, char* buf, size_t buf_len, int* out_len)
@@ -81,7 +178,7 @@ static raid_error_t socket_impl_recv(raid_socket_t* s, char* buf, size_t buf_len
     if (errno == EWOULDBLOCK || errno == EAGAIN || err == WSAETIMEDOUT) {
         return RAID_RECV_TIMEOUT;
     }
-    if (err == WSAECONNRESET || err == WSAEINTR) {
+    if (is_not_connected_err(err)) {
         return RAID_NOT_CONNECTED;
     }
     if (*out_len < 0) {
@@ -97,12 +194,12 @@ static raid_error_t socket_impl_disconnect(raid_socket_t* s)
 
     ret = shutdown(s->handle, SD_BOTH);
     if (ret == -1) {
-        return RAID_SHUTDOWN_ERROR;
+        socket_log_error("shutdown");
     }
 
     ret = closesocket(s->handle);
     if (ret == -1) {
-        return RAID_CLOSE_ERROR;
+        socket_log_error("closesocket");
     }
 
     s->handle = -1;

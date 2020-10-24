@@ -55,3 +55,6 @@ build
 docs
 test_config.h
 *~
+
+# Exception for pthreads4w
+!pthreads4w.lib

@@ -8,6 +8,8 @@ void raid_request_group_init(raid_request_group_t* g, raid_client_t* raid)
 {
     memset(g, 0, sizeof(raid_request_group_t));
     g->raid = raid;
+    pthread_mutex_init(&g->entries_mutex, NULL);
+    pthread_cond_init(&g->entries_cond, NULL);
 }
 
 void raid_request_group_destroy(raid_request_group_t* g)
@@ -41,6 +43,10 @@ void raid_request_group_delete(raid_request_group_t* g)
 raid_request_group_entry_t* raid_request_group_add(raid_request_group_t* g)
 {
     raid_request_group_entry_t* entry = malloc(sizeof(raid_request_group_entry_t));
+    if (entry == NULL) {
+        return NULL;
+    }
+
     memset(entry, 0, sizeof(raid_request_group_entry_t));
     entry->group = g;
     raid_writer_init(&entry->writer, g->raid);
@@ -111,7 +117,7 @@ void raid_request_group_read_to_array(raid_request_group_t* g, raid_reader_t* ou
     raid_writer_init(&aw, g->raid);
     raid_write_array(&aw, g->num_entries);
 
-    if (out_errs) {
+    if (out_errs != NULL) {
         *out_errs = malloc(sizeof(raid_error_t) * g->num_entries);
     }
 
@@ -123,7 +129,7 @@ void raid_request_group_read_to_array(raid_request_group_t* g, raid_reader_t* ou
         else {
             raid_write_nil(&aw);
         }
-        if (out_errs) {
+        if (out_errs != NULL) {
             (*out_errs)[i] = entry->error;
         }
         i++;
