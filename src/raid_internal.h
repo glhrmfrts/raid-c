@@ -71,6 +71,7 @@ static type* type##_list_begin(type* head) \
 
 #define ATOMIC_READ(value) (__sync_fetch_and_add((volatile unsigned int*)&value, 0))
 #define ATOMIC_ADD(value, add_value) (__sync_fetch_and_add((volatile unsigned int*)&value, add_value))
+#define ATOMIC_SUB(value, sub_value) (__sync_fetch_and_sub((volatile unsigned int*)&value, sub_value))
 
 #endif
 

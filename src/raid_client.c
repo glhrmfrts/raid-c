@@ -579,11 +579,11 @@ raid_error_t raid_disconnect(raid_client_t* cl)
 
 void raid_destroy(raid_client_t* cl)
 {
+    pthread_mutex_lock(&cl->reqs_mutex);
     if (raid_socket_connected(&cl->socket)) {
-        pthread_mutex_lock(&cl->reqs_mutex);
         (void)raid_socket_close(&cl->socket);
-        pthread_mutex_unlock(&cl->reqs_mutex);
     }
+    pthread_mutex_unlock(&cl->reqs_mutex);
 
     join_recv_thread(cl);
     pthread_mutex_destroy(&cl->reqs_mutex);
