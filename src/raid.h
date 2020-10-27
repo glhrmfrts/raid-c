@@ -53,13 +53,13 @@ int main(int argc, char** argv)
 #ifndef RAID_H
 #define RAID_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <stdint.h>
 #include <pthread.h>
 #include <msgpack.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define RAID_READER_MAX_DEPTH 64
 
